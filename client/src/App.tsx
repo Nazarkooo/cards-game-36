@@ -19,6 +19,7 @@ export default function App() {
     chooseJackBonus,
     leaveRoom,
     sendChat,
+    declareSuit,
   } = useGame();
 
   return (
@@ -40,6 +41,7 @@ export default function App() {
           onChooseJackBonus={chooseJackBonus}
           onLeaveRoom={leaveRoom}
           onSendChat={sendChat}
+          onDeclareSuit={declareSuit}
         />
       ) : (
         <Home connected={connected} onCreate={createRoom} onJoin={joinRoom} />

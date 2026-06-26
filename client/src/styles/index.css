@@ -490,6 +490,37 @@ button {
   border-radius: 10px;
 }
 
+.declare-suit-banner {
+  text-align: center;
+  background: rgba(139, 92, 246, 0.14);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 14px;
+  margin: 6px 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.declare-suit-banner p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.declare-suit-options {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.declare-suit-options .suit-btn {
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  font-size: 26px;
+}
+
 /* ---------- Action log ---------- */
 
 .action-log {

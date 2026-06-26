@@ -108,6 +108,7 @@ export function useGame() {
   const callBridge = useCallback(() => socket.emit("call_bridge"), []);
   const chooseJackBonus = useCallback((mode: "all" | "self") => socket.emit("choose_jack_bonus", { mode }), []);
   const sendChat = useCallback((text: string) => socket.emit("send_chat", { text }), []);
+  const declareSuit = useCallback((suit: Suit) => socket.emit("declare_suit", { suit }), []);
   const leaveRoom = useCallback(() => {
     socket.emit("leave_room");
     clearSession();
@@ -132,5 +133,6 @@ export function useGame() {
     chooseJackBonus,
     leaveRoom,
     sendChat,
+    declareSuit,
   };
 }

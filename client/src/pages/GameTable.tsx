@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { PublicGameState, Suit } from "../shared";
-import { isLegalCoverHint } from "../shared";
+import { isLegalCoverHint, SUIT_SYMBOLS, SUITS } from "../shared";
 import { Hand, useCardSelection } from "../components/Hand";
 import { TableStack } from "../components/TableStack";
 import { PlayersRail } from "../components/PlayersRail";
@@ -23,6 +23,7 @@ interface Props {
   onChooseJackBonus: (mode: "all" | "self") => void;
   onLeaveRoom: () => void;
   onSendChat: (text: string) => void;
+  onDeclareSuit: (suit: Suit) => void;
 }
 
 function ChatFab({ unread, onClick }: { unread: number; onClick: () => void }) {
@@ -45,6 +46,7 @@ export function GameTable({
   onChooseJackBonus,
   onLeaveRoom,
   onSendChat,
+  onDeclareSuit,
 }: Props) {
   const { selectedIds, toggle, clear } = useCardSelection();
   const [showScores, setShowScores] = useState(false);
@@ -68,7 +70,10 @@ export function GameTable({
 
   const selectedRank = selectedIds.length ? hand.find((c) => c.id === selectedIds[0])?.rank : null;
 
-  const canDraw = isMyTurn && state.phase === "playing" && !state.awaitingJackBonusFrom;
+  // the table started with a dealt Jack — its suit hasn't been declared yet
+  const needsSuitDeclare = isMyTurn && state.phase === "playing" && state.activeSuit === null;
+
+  const canDraw = isMyTurn && state.phase === "playing" && !state.awaitingJackBonusFrom && !needsSuitDeclare;
   const canPass = canDraw && state.pendingEffect?.type !== "draw7" && state.topCard?.rank !== "6";
 
   const hasAnyLegal = useMemo(() => {
@@ -77,9 +82,10 @@ export function GameTable({
   }, [hand, state.topCard, state.activeSuit]);
 
   const selectionIsLegal = useMemo(() => {
-    if (!selectedIds.length || !state.topCard || !state.activeSuit) return false;
-    if (state.pendingEffect?.type === "draw7") return selectedRank === "7";
+    if (!selectedIds.length || !state.topCard) return false;
     if (selectedRank === "J") return true;
+    if (!state.activeSuit) return false;
+    if (state.pendingEffect?.type === "draw7") return selectedRank === "7";
     const selectedCards = hand.filter((c) => selectedIds.includes(c.id));
     return selectedCards.some((c) => isLegalCoverHint(c, state.topCard!.rank, state.activeSuit!));
   }, [selectedIds, selectedRank, hand, state.topCard, state.activeSuit, state.pendingEffect]);
@@ -166,8 +172,28 @@ export function GameTable({
 
       <div className="turn-indicator">
         {isMyTurn ? <strong>Ваш хід</strong> : <span>Хід: {state.players.find((p) => p.id === state.turnPlayerId)?.name ?? "?"}</span>}
-        {isMyTurn && !hasAnyLegal && !state.pendingEffect && <span className="hint-text"> — немає ходу, візьміть карту</span>}
+        {isMyTurn && !needsSuitDeclare && !hasAnyLegal && !state.pendingEffect && <span className="hint-text"> — немає ходу, візьміть карту</span>}
+        {!isMyTurn && state.activeSuit === null && (
+          <span className="hint-text"> — очікуємо вибір масті</span>
+        )}
       </div>
+
+      {needsSuitDeclare && (
+        <div className="declare-suit-banner">
+          <p>Стіл відкрито Валетом — оберіть масть, або зіграйте свого Валета з руки</p>
+          <div className="declare-suit-options">
+            {SUITS.map((s) => (
+              <button
+                key={s}
+                className={`suit-btn ${s === "H" || s === "D" ? "suit-red" : "suit-black"}`}
+                onClick={() => onDeclareSuit(s)}
+              >
+                {SUIT_SYMBOLS[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <Hand cards={hand} selectedIds={selectedIds} onToggle={(c) => toggle(c, hand)} />
 

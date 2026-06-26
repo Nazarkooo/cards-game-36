@@ -1,4 +1,4 @@
-import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDrawCard, applyPlayCards, createRoom, startRound, toPublicState } from "./gameEngine.js";
+import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPlayCards, createRoom, startRound, toPublicState } from "./gameEngine.js";
 import { Card } from "./shared.js";
 
 function assert(cond: boolean, msg: string) {
@@ -174,6 +174,86 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   res = applyPlayCards(room, throwerId, [followUp.id]);
   assert(res.ok, "thrower covers their own 6 with a matching-suit card");
   assert(room.order[room.turnIndex] === otherId, "turn finally passes to the other player after the 6 is resolved");
+}
+
+// --- Test 8: the 4-card starter acts first (not the next player) ---
+{
+  const room = createRoom("rst1", "st1", "Starter");
+  addPlayer(room, "st2", "Second");
+  addPlayer(room, "st3", "Third");
+  room.roundStarterId = "st1"; // simulate "Starter" having won the previous round
+  startRound(room);
+  assert(room.players.get("st1")!.hand.length === 4, "previous-round winner gets 4 cards");
+  assert(room.order[room.turnIndex] === "st1", "the 4-card starter takes the very first turn (not the next player)");
+}
+
+// --- Test 9: an Ace dealt as the table starter card carries a baseline skip ---
+{
+  const room = createRoom("rac1", "ac1", "Starter");
+  addPlayer(room, "ac2", "Second");
+  addPlayer(room, "ac3", "Third");
+  room.roundStarterId = "ac1";
+  startRound(room);
+  // force the table's starter card to be an Ace, as if it had been dealt that way
+  room.pile = [{ id: "forced-ace", rank: "A", suit: "S" }];
+  room.activeSuit = "S";
+  room.dealtAceBonus = 1;
+
+  const starter = room.players.get("ac1")!;
+  const plainCard: Card = { id: "plain1", rank: "9", suit: "S" }; // matches suit, no special effect of its own
+  starter.hand.push(plainCard);
+  const beforeIdx = room.turnIndex;
+  const res = applyPlayCards(room, "ac1", [plainCard.id]);
+  assert(res.ok, "starter plays an unrelated card matching the dealt ace's suit");
+  const expectedIdx = (beforeIdx + 1 + 1) % room.order.length; // 1 normal step + 1 dealt-ace bonus
+  assert(room.turnIndex === expectedIdx, `dealt ace adds one extra skip (got ${room.turnIndex}, expected ${expectedIdx})`);
+  assert(room.dealtAceBonus === 0, "dealt-ace bonus is consumed after the first turn transition");
+}
+
+// --- Test 10: an Ace dealt + starter also throws their own Ace skips two players total ---
+{
+  const room = createRoom("rac2", "acb1", "Starter");
+  addPlayer(room, "acb2", "Second");
+  addPlayer(room, "acb3", "Third");
+  room.roundStarterId = "acb1";
+  startRound(room);
+  room.pile = [{ id: "forced-ace2", rank: "A", suit: "H" }];
+  room.activeSuit = "H";
+  room.dealtAceBonus = 1;
+
+  const starter = room.players.get("acb1")!;
+  const ownAce: Card = { id: "own-ace", rank: "A", suit: "H" };
+  starter.hand.push(ownAce);
+  const beforeIdx = room.turnIndex;
+  const res = applyPlayCards(room, "acb1", [ownAce.id]);
+  assert(res.ok, "starter throws their own ace on top of the dealt ace");
+  const expectedIdx = (beforeIdx + 1 + 1 + 1) % room.order.length; // 1 normal + 1 own ace + 1 dealt bonus = skip 2 players
+  assert(room.turnIndex === expectedIdx, `dealt ace + thrown ace skips 2 players total (got ${room.turnIndex}, expected ${expectedIdx})`);
+}
+
+// --- Test 11: a Jack dealt as the table starter card requires a suit declaration before anything else ---
+{
+  const room = createRoom("rjk1", "jk1", "Starter");
+  addPlayer(room, "jk2", "Second");
+  room.roundStarterId = "jk1";
+  startRound(room);
+  room.pile = [{ id: "forced-jack", rank: "J", suit: "C" }];
+  room.activeSuit = null; // suit not declared yet, exactly as startRound would set it for a dealt jack
+
+  const starter = room.players.get("jk1")!;
+  const unrelatedCard: Card = { id: "unrelated1", rank: "9", suit: "C" };
+  starter.hand.push(unrelatedCard);
+
+  const drawRes = applyDrawCard(room, "jk1");
+  assert(drawRes.ok === false, "cannot draw while the dealt jack's suit is undeclared");
+
+  const playRes = applyPlayCards(room, "jk1", [unrelatedCard.id]);
+  assert(playRes.ok === false, "cannot play a non-jack card while the suit is undeclared, even if it matches the jack's printed suit");
+
+  const declareRes = applyDeclareSuit(room, "jk1", "D");
+  assert(declareRes.ok, "starter declares a suit for the dealt jack");
+  assert(room.activeSuit === "D", "active suit is now what the starter declared");
+  assert(room.order[room.turnIndex] === "jk2", "turn passes to the next player after the suit is declared");
 }
 
 console.log("\nDone.");

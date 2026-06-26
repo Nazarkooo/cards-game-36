@@ -30,6 +30,7 @@ export interface RoomState {
   lastRoundSummary: RoundSummary | null;
   log: ActionLogEntry[];
   chat: ChatMessage[];
+  dealtAceBonus: number; // one-time extra skip from an Ace dealt as the round's table starter card
 }
 
 let logCounter = 0;
@@ -59,6 +60,7 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     lastRoundSummary: null,
     log: [],
     chat: [],
+    dealtAceBonus: 0,
   };
   addPlayer(state, hostId, hostName);
   pushLog(state, `${hostName} створив(ла) кімнату`);
@@ -136,7 +138,9 @@ function mustCoverSix(state: RoomState): boolean {
 
 function advanceTurn(state: RoomState, steps: number): void {
   if (!state.order.length) return;
-  state.turnIndex = (state.turnIndex + steps) % state.order.length;
+  const bonus = state.dealtAceBonus;
+  state.dealtAceBonus = 0;
+  state.turnIndex = (state.turnIndex + steps + bonus) % state.order.length;
 }
 
 function removePlayerFromOrder(state: RoomState, id: string): void {
@@ -171,7 +175,10 @@ export function startRound(state: RoomState): void {
   const tableStarter = deck.splice(0, 1)[0];
   state.pile = tableStarter ? [tableStarter] : [];
   state.stock = deck;
-  state.activeSuit = tableStarter ? tableStarter.suit : null;
+  // a dealt Jack has no suit declared yet — the first player must resolve that before anything else
+  state.activeSuit = tableStarter ? (tableStarter.rank === "J" ? null : tableStarter.suit) : null;
+  // a dealt Ace already carries its skip effect, same as if it had just been played
+  state.dealtAceBonus = tableStarter && tableStarter.rank === "A" ? 1 : 0;
   state.pendingEffect = null;
   state.awaitingJackBonusFrom = null;
   state.jackBonusAmount = 0;
@@ -180,9 +187,9 @@ export function startRound(state: RoomState): void {
   state.roundMultiplier = 1;
   state.phase = "playing";
 
+  // the player dealt 4 cards (their 5th card is the table starter) acts first
   if (starter) {
-    const startIdx = state.order.indexOf(starter.id);
-    state.turnIndex = (startIdx + 1) % state.order.length;
+    state.turnIndex = state.order.indexOf(starter.id);
   } else {
     state.turnIndex = 0;
   }
@@ -220,6 +227,10 @@ export function applyPlayCards(
 
   const tr = topRank(state);
   const suit = state.activeSuit;
+
+  if (suit === null && rank !== "J") {
+    return { ok: false, error: "Спочатку оголосіть масть або зіграйте Валета" };
+  }
 
   // If a draw7 effect is pending on this player, only a redirect with 7s is allowed as a play.
   if (state.pendingEffect?.type === "draw7" && rank !== "7") {
@@ -279,10 +290,24 @@ export function applyPlayCards(
   return { ok: true };
 }
 
+export function applyDeclareSuit(state: RoomState, playerId: string, suit: Suit): ActionResult {
+  if (state.phase !== "playing") return { ok: false, error: "Раунд не триває" };
+  if (currentPlayerId(state) !== playerId) return { ok: false, error: "Не ваш хід" };
+  if (state.activeSuit !== null) return { ok: false, error: "Масть вже визначена" };
+
+  const player = state.players.get(playerId);
+  if (!player) return { ok: false, error: "Гравця не знайдено" };
+  state.activeSuit = suit;
+  pushLog(state, `${player.name} оголошує масть`);
+  advanceTurn(state, 1);
+  return { ok: true };
+}
+
 export function applyDrawCard(state: RoomState, playerId: string): ActionResult {
   if (state.phase !== "playing") return { ok: false, error: "Раунд не триває" };
   if (currentPlayerId(state) !== playerId) return { ok: false, error: "Не ваш хід" };
   if (state.awaitingJackBonusFrom) return { ok: false, error: "Очікується вибір бонусу валета" };
+  if (state.activeSuit === null) return { ok: false, error: "Спочатку оголосіть масть або зіграйте Валета" };
 
   const player = state.players.get(playerId);
   if (!player) return { ok: false, error: "Гравця не знайдено" };
@@ -321,6 +346,7 @@ export function applyPassTurn(state: RoomState, playerId: string): ActionResult 
   if (state.phase !== "playing") return { ok: false, error: "Раунд не триває" };
   if (currentPlayerId(state) !== playerId) return { ok: false, error: "Не ваш хід" };
   if (state.awaitingJackBonusFrom) return { ok: false, error: "Очікується вибір бонусу валета" };
+  if (state.activeSuit === null) return { ok: false, error: "Спочатку оголосіть масть або зіграйте Валета" };
   if (mustCoverSix(state)) return { ok: false, error: "Потрібно накрити 6" };
   if (state.pendingEffect?.type === "draw7") return { ok: false, error: "Зіграйте 7 або візьміть карти" };
 

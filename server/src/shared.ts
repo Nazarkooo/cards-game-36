@@ -80,6 +80,7 @@ export type ClientToServerEvents = {
   pass_turn: () => void;
   leave_room: () => void;
   send_chat: (data: { text: string }) => void;
+  declare_suit: (data: { suit: Suit }) => void;
 };
 
 export type ServerToClientEvents = {
