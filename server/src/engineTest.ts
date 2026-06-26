@@ -23,8 +23,8 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   addPlayer(room, "p3", "Bohdan");
   startRound(room);
   assert(room.order.length === 3, "3 active players in order");
-  const starterDealt = [...room.players.values()].some((p) => p.hand.length === 5);
-  assert(starterDealt, "everyone has 5 cards on first round (no previous winner)");
+  const handSizes = [...room.players.values()].map((p) => p.hand.length).sort();
+  assert(JSON.stringify(handSizes) === JSON.stringify([4, 5, 5]), `first round: one random player gets 4, rest get 5 (got ${handSizes})`);
   assert(room.pile.length === 1, "table starter card placed");
 }
 

@@ -158,6 +158,9 @@ export function startRound(state: RoomState): void {
   let starter: Player | null = null;
   if (state.roundStarterId) {
     starter = eligible.find((p) => p.id === state.roundStarterId) ?? null;
+  } else {
+    // very first round of the session: nobody has won yet, so pick the 4-card starter randomly
+    starter = eligible[Math.floor(Math.random() * eligible.length)] ?? null;
   }
 
   for (const p of eligible) {
@@ -184,7 +187,8 @@ export function startRound(state: RoomState): void {
     state.turnIndex = 0;
   }
 
-  pushLog(state, `Нова роздача. Стартова карта: ${tableStarter.rank}${tableStarter.suit}`);
+  const starterNote = starter ? ` (${starter.name} отримав 4 карти, його 5-та — на столі)` : "";
+  pushLog(state, `Нова роздача. Стартова карта: ${tableStarter.rank}${tableStarter.suit}${starterNote}`);
 }
 
 // --- Actions ---
