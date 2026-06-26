@@ -20,7 +20,7 @@ export function Home({ connected, onCreate, onJoin }: Props) {
   return (
     <div className="home-screen">
       <div className="home-card">
-        <h1>🃏 Карти 36</h1>
+        <h1>🃏 Брідж</h1>
         <p className="subtitle">Дурень + Уно за вашими правилами</p>
 
         <label className="field">
