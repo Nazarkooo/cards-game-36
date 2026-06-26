@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: cards-game-36
+    runtime: node
+    plan: free
+    buildCommand: cd client && npm install && npm run build && cd ../server && npm install && npm run build
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.16.0
