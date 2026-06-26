@@ -107,6 +107,7 @@ export function useGame() {
   const passTurn = useCallback(() => socket.emit("pass_turn"), []);
   const callBridge = useCallback(() => socket.emit("call_bridge"), []);
   const chooseJackBonus = useCallback((mode: "all" | "self") => socket.emit("choose_jack_bonus", { mode }), []);
+  const sendChat = useCallback((text: string) => socket.emit("send_chat", { text }), []);
   const leaveRoom = useCallback(() => {
     socket.emit("leave_room");
     clearSession();
@@ -130,5 +131,6 @@ export function useGame() {
     callBridge,
     chooseJackBonus,
     leaveRoom,
+    sendChat,
   };
 }

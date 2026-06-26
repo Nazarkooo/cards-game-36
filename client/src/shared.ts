@@ -27,6 +27,14 @@ export interface ActionLogEntry {
   ts: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  playerId: string;
+  name: string;
+  text: string;
+  ts: number;
+}
+
 export interface PublicGameState {
   roomId: string;
   phase: "lobby" | "playing" | "roundOver" | "sessionOver";
@@ -47,6 +55,7 @@ export interface PublicGameState {
   awaitingJackBonusFrom: string | null;
   jackBonusAmount: number;
   log: ActionLogEntry[];
+  chat: ChatMessage[];
   winnerId: string | null; // session winner
   lastRoundSummary: RoundSummary | null;
 }
@@ -70,6 +79,7 @@ export type ClientToServerEvents = {
   choose_jack_bonus: (data: { mode: "all" | "self" }) => void;
   pass_turn: () => void;
   leave_room: () => void;
+  send_chat: (data: { text: string }) => void;
 };
 
 export type ServerToClientEvents = {

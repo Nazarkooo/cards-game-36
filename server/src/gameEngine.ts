@@ -1,4 +1,4 @@
-import { Card, PendingEffect, PublicGameState, PublicPlayer, Rank, RoundSummary, Suit, ActionLogEntry } from "./shared.js";
+import { Card, PendingEffect, PublicGameState, PublicPlayer, Rank, RoundSummary, Suit, ActionLogEntry, ChatMessage } from "./shared.js";
 import { freshDeck, handValue, isLegalCover, pointValue, shuffle } from "./deck.js";
 
 export interface Player {
@@ -29,6 +29,7 @@ export interface RoomState {
   winnerId: string | null;
   lastRoundSummary: RoundSummary | null;
   log: ActionLogEntry[];
+  chat: ChatMessage[];
 }
 
 let logCounter = 0;
@@ -57,6 +58,7 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     winnerId: null,
     lastRoundSummary: null,
     log: [],
+    chat: [],
   };
   addPlayer(state, hostId, hostName);
   pushLog(state, `${hostName} створив(ла) кімнату`);
@@ -264,6 +266,8 @@ export function applyPlayCards(
   } else if (rank === "A") {
     advanceTurn(state, 1 + cards.length);
     pushLog(state, `Пропуск ходу: ${cards.length} гравець(ів)`);
+  } else if (rank === "6") {
+    // the player who threw the 6 must immediately keep covering (or draw until they can) — turn stays with them
   } else {
     advanceTurn(state, 1);
   }
@@ -320,6 +324,19 @@ export function applyPassTurn(state: RoomState, playerId: string): ActionResult 
   if (!player) return { ok: false, error: "Гравця не знайдено" };
   advanceTurn(state, 1);
   pushLog(state, `${player.name} пропускає хід`);
+  return { ok: true };
+}
+
+let chatCounter = 0;
+
+export function applySendChat(state: RoomState, playerId: string, text: string): ActionResult {
+  const player = state.players.get(playerId);
+  if (!player) return { ok: false, error: "Гравця не знайдено" };
+  const clean = text.trim().slice(0, 280);
+  if (!clean) return { ok: false, error: "Порожнє повідомлення" };
+  chatCounter += 1;
+  state.chat.push({ id: `m${chatCounter}`, playerId, name: player.name, text: clean, ts: Date.now() });
+  if (state.chat.length > 100) state.chat.shift();
   return { ok: true };
 }
 
@@ -468,6 +485,7 @@ export function toPublicState(state: RoomState, forPlayerId: string): PublicGame
     awaitingJackBonusFrom: state.awaitingJackBonusFrom,
     jackBonusAmount: state.jackBonusAmount,
     log: state.log.slice(-20),
+    chat: state.chat.slice(-50),
     winnerId: state.winnerId,
     lastRoundSummary: state.lastRoundSummary,
   };

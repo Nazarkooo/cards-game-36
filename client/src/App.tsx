@@ -18,6 +18,7 @@ export default function App() {
     callBridge,
     chooseJackBonus,
     leaveRoom,
+    sendChat,
   } = useGame();
 
   return (
@@ -38,6 +39,7 @@ export default function App() {
           onCallBridge={callBridge}
           onChooseJackBonus={chooseJackBonus}
           onLeaveRoom={leaveRoom}
+          onSendChat={sendChat}
         />
       ) : (
         <Home connected={connected} onCreate={createRoom} onJoin={joinRoom} />

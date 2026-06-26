@@ -149,4 +149,31 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   assert(pB.score === 0, `e2 (285+10*mult=295) should reset to 0, got score=${pB.score}`);
 }
 
+// --- Test 7: throwing a 6 keeps the turn with the thrower until they cover it themselves ---
+{
+  const room = createRoom("rs6", "s6", "Thrower");
+  addPlayer(room, "s6b", "Other");
+  startRound(room);
+  const top = room.pile[room.pile.length - 1];
+  const throwerId = room.order[room.turnIndex];
+  const thrower = room.players.get(throwerId)!;
+  const otherId = room.order.find((id) => id !== throwerId)!;
+
+  const six: Card = { id: "six1", rank: "6", suit: top.suit };
+  const followUp: Card = { id: "follow1", rank: "9", suit: top.suit }; // matches the 6's suit
+  thrower.hand.push(six, followUp);
+
+  let res = applyPlayCards(room, throwerId, [six.id]);
+  assert(res.ok, "thrower plays a 6");
+  assert(room.order[room.turnIndex] === throwerId, "turn stays with the thrower right after playing 6 (not the next player)");
+
+  // thrower has no other legal card except the prepared follow-up; verify draw_card is rejected since they DO have one
+  const drawRes = applyDrawCard(room, throwerId);
+  assert(drawRes.ok === false, "thrower cannot draw instead of covering when they hold a legal cover card");
+
+  res = applyPlayCards(room, throwerId, [followUp.id]);
+  assert(res.ok, "thrower covers their own 6 with a matching-suit card");
+  assert(room.order[room.turnIndex] === otherId, "turn finally passes to the other player after the 6 is resolved");
+}
+
 console.log("\nDone.");

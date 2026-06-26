@@ -9,6 +9,8 @@ import { SuitPicker } from "../components/SuitPicker";
 import { JackBonusModal } from "../components/JackBonusModal";
 import { ActionLog } from "../components/ActionLog";
 import { GameOverModal } from "../components/GameOverModal";
+import { ChatPanel } from "../components/ChatPanel";
+import { ActiveSuitBadge } from "../components/ActiveSuitBadge";
 
 interface Props {
   state: PublicGameState;
@@ -20,12 +22,45 @@ interface Props {
   onCallBridge: () => void;
   onChooseJackBonus: (mode: "all" | "self") => void;
   onLeaveRoom: () => void;
+  onSendChat: (text: string) => void;
 }
 
-export function GameTable({ state, myId, onStartRound, onPlayCards, onDrawCard, onPassTurn, onCallBridge, onChooseJackBonus, onLeaveRoom }: Props) {
+function ChatFab({ unread, onClick }: { unread: number; onClick: () => void }) {
+  return (
+    <button className="chat-fab" onClick={onClick}>
+      💬
+      {unread > 0 && <span className="chat-fab-badge">{unread > 9 ? "9+" : unread}</span>}
+    </button>
+  );
+}
+
+export function GameTable({
+  state,
+  myId,
+  onStartRound,
+  onPlayCards,
+  onDrawCard,
+  onPassTurn,
+  onCallBridge,
+  onChooseJackBonus,
+  onLeaveRoom,
+  onSendChat,
+}: Props) {
   const { selectedIds, toggle, clear } = useCardSelection();
   const [showScores, setShowScores] = useState(false);
   const [pendingSuitPick, setPendingSuitPick] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [lastSeenChatCount, setLastSeenChatCount] = useState(0);
+  const unreadChat = Math.max(0, state.chat.length - lastSeenChatCount);
+
+  const openChat = () => {
+    setChatOpen(true);
+    setLastSeenChatCount(state.chat.length);
+  };
+  const closeChat = () => {
+    setChatOpen(false);
+    setLastSeenChatCount(state.chat.length);
+  };
 
   const isMyTurn = state.turnPlayerId === myId;
   const isHost = state.hostId === myId;
@@ -88,12 +123,16 @@ export function GameTable({ state, myId, onStartRound, onPlayCards, onDrawCard, 
         <button className="btn btn-ghost" onClick={onLeaveRoom}>
           Вийти з кімнати
         </button>
+        <ChatFab unread={unreadChat} onClick={openChat} />
+        <ChatPanel messages={state.chat} myId={myId} open={chatOpen} onClose={closeChat} onSend={onSendChat} />
       </div>
     );
   }
 
   return (
     <div className="game-table">
+      <ActiveSuitBadge suit={state.activeSuit} />
+
       <header className="game-header">
         <span className="room-badge">Кімната {state.roomId}</span>
         {state.roundMultiplier > 1 && <span className="multiplier-badge">x{state.roundMultiplier}</span>}
@@ -169,6 +208,9 @@ export function GameTable({ state, myId, onStartRound, onPlayCards, onDrawCard, 
       )}
 
       <ScoreBoard players={state.players} myId={myId} open={showScores} onClose={() => setShowScores(false)} />
+
+      <ChatFab unread={unreadChat} onClick={openChat} />
+      <ChatPanel messages={state.chat} myId={myId} open={chatOpen} onClose={closeChat} onSend={onSendChat} />
     </div>
   );
 }

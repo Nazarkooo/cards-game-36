@@ -647,3 +647,194 @@ button {
     justify-content: center;
   }
 }
+
+/* ---------- Active suit floater ---------- */
+
+.active-suit-floater {
+  position: fixed;
+  top: 66px;
+  right: 14px;
+  z-index: 40;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.9), rgba(241, 238, 249, 0.95) 55%, rgba(231, 227, 245, 0.97) 100%);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.45), 0 8px 22px rgba(0, 0, 0, 0.5);
+  animation: suit-glow 2.2s ease-in-out infinite;
+}
+
+.active-suit-floater-symbol {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.active-suit-floater.suit-red .active-suit-floater-symbol { color: var(--red); }
+.active-suit-floater.suit-black .active-suit-floater-symbol { color: var(--black); }
+
+@keyframes suit-glow {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.45), 0 8px 22px rgba(0, 0, 0, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0.45), 0 8px 26px rgba(0, 0, 0, 0.55); }
+}
+
+@media (min-width: 760px) {
+  .active-suit-floater {
+    top: 72px;
+    right: calc(50% - 360px + 18px);
+    width: 68px;
+    height: 68px;
+  }
+  .active-suit-floater-symbol {
+    font-size: 38px;
+  }
+}
+
+/* ---------- Chat ---------- */
+
+.chat-fab {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 45;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: var(--accent-grad);
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 26px rgba(139, 92, 246, 0.45);
+}
+
+.chat-fab-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--red);
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+
+.chat-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 10, 0.55);
+  z-index: 55;
+}
+
+.chat-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(86vw, 340px);
+  background: linear-gradient(180deg, rgba(20, 16, 34, 0.97), rgba(10, 8, 18, 0.98));
+  border-left: 1px solid var(--panel-border);
+  backdrop-filter: blur(16px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+}
+
+.chat-panel-open {
+  transform: translateX(0);
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  font-weight: 700;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 20px;
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 7px 10px;
+  max-width: 90%;
+  align-self: flex-start;
+}
+
+.chat-msg-me {
+  align-self: flex-end;
+  background: rgba(139, 92, 246, 0.22);
+}
+
+.chat-msg-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+
+.chat-msg-text {
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.chat-input-row input {
+  flex: 1;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.chat-input-row input:focus {
+  outline: none;
+  border-color: var(--accent-2);
+}
+
+.chat-send-btn {
+  width: 44px;
+  flex: initial;
+  min-width: 0;
+  padding: 0;
+  font-size: 18px;
+}
