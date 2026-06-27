@@ -338,4 +338,22 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   assert(room.lastRoundSummary?.pointsAdded["l8a"] === 0, "thrower (winner) gets 0 points added");
 }
 
+// --- Test 15: you cannot draw on a normal turn when you already have a legal card to play ---
+{
+  const room = createRoom("rdr1", "dr1", "Player");
+  addPlayer(room, "dr2", "Other");
+  room.roundStarterId = "dr1";
+  startRound(room);
+  // resolve the first move so we're testing a genuinely "normal" turn, not the exempt opening one
+  room.firstMoveOfRound = false;
+
+  const top = room.pile[room.pile.length - 1];
+  const player = room.players.get("dr1")!;
+  const matching: Card = { id: "matchcard", rank: top.rank === "9" ? "10" : "9", suit: top.suit };
+  player.hand.push(matching);
+
+  const res = applyDrawCard(room, "dr1");
+  assert(res.ok === false, "drawing is rejected while a legal card is available");
+}
+
 console.log("\nDone.");

@@ -347,6 +347,10 @@ export function applyDrawCard(state: RoomState, playerId: string): ActionResult 
     return { ok: false, error: "Потрібно накрити 6 — у вас є карта для цього" };
   }
 
+  if (!mustCoverSix(state) && legalMoves(state, player.hand).length > 0) {
+    return { ok: false, error: "У вас є хід — зіграйте карту замість добору" };
+  }
+
   state.firstMoveOfRound = false;
   const drawn = drawFromStock(state, 1);
   player.hand.push(...drawn);

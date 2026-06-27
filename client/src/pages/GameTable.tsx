@@ -73,14 +73,27 @@ export function GameTable({
   // the table started with a dealt Jack — its suit hasn't been declared yet
   const needsSuitDeclare = isMyTurn && state.phase === "playing" && state.activeSuit === null;
 
-  const canDraw = isMyTurn && state.phase === "playing" && !state.awaitingJackBonusFrom && !needsSuitDeclare;
-  // skipping without drawing is only allowed on the very first move of the round (the 4-card starter's dealt card already counts as theirs)
-  const canPass = canDraw && state.canPassWithoutDraw && state.pendingEffect?.type !== "draw7" && state.topCard?.rank !== "6";
-
   const hasAnyLegal = useMemo(() => {
     if (!state.topCard || !state.activeSuit) return false;
     return hand.some((c) => isLegalCoverHint(c, state.topCard!.rank, state.activeSuit!));
   }, [hand, state.topCard, state.activeSuit]);
+
+  // you can only draw when you have nothing to play (or to accept an accumulated draw7) — never "just because"
+  const canDraw =
+    isMyTurn &&
+    state.phase === "playing" &&
+    !state.awaitingJackBonusFrom &&
+    !needsSuitDeclare &&
+    (state.pendingEffect?.type === "draw7" || !hasAnyLegal);
+  // skipping without drawing is only allowed on the very first move of the round (the 4-card starter's dealt card already counts as theirs)
+  const canPass =
+    isMyTurn &&
+    state.phase === "playing" &&
+    !state.awaitingJackBonusFrom &&
+    !needsSuitDeclare &&
+    state.canPassWithoutDraw &&
+    state.pendingEffect?.type !== "draw7" &&
+    state.topCard?.rank !== "6";
 
   const selectionIsLegal = useMemo(() => {
     if (!selectedIds.length || !state.topCard) return false;
