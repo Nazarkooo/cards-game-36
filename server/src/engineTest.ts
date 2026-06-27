@@ -22,6 +22,8 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.pile = [{ id: "neutral-top", rank: "9", suit }];
   room.activeSuit = suit;
   room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
 }
 
 // --- Test 1: basic deal + legal move + A skip ---
@@ -123,6 +125,10 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   const room = createRoom("rj1", "j1", "Winner");
   addPlayer(room, "j2", "Loser");
   startRound(room);
+  // neutralize whatever the real random deal happened to set, so only the jack-bonus math is under test
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
   const winnerId = room.order[room.turnIndex];
   const winner = room.players.get(winnerId)!;
   const top = room.pile[room.pile.length - 1];
@@ -209,6 +215,8 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.pile = [{ id: "forced-ace", rank: "A", suit: "S" }];
   room.activeSuit = "S";
   room.dealtAceBonus = 1;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
 
   const starter = room.players.get("ac1")!;
   const plainCard: Card = { id: "plain1", rank: "9", suit: "S" }; // matches suit, no special effect of its own
@@ -231,6 +239,8 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.pile = [{ id: "forced-ace2", rank: "A", suit: "H" }];
   room.activeSuit = "H";
   room.dealtAceBonus = 1;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
 
   const starter = room.players.get("acb1")!;
   const ownAce: Card = { id: "own-ace", rank: "A", suit: "H" };
@@ -251,6 +261,8 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.pile = [{ id: "forced-jack", rank: "J", suit: "C" }];
   room.activeSuit = null; // suit not declared yet, exactly as startRound would set it for a dealt jack
   room.dealtAceBonus = 0; // neutralize whatever the real random deal happened to set
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
 
   const starter = room.players.get("jk1")!;
   const unrelatedCard: Card = { id: "unrelated1", rank: "9", suit: "C" };
@@ -432,6 +444,97 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   assert(first.ok, "first draw while covering a 6 succeeds");
   const second = applyDrawCard(room, "cap3");
   assert(second.ok, "a second consecutive draw while covering a 6 is still allowed (not capped at one like a normal turn)");
+}
+
+// --- Test 19: a dealt 8 (table starter card) forces the next player to draw, just like an actively played 8 ---
+{
+  const room = createRoom("rd8a", "d8a", "Starter");
+  addPlayer(room, "d8b", "Next");
+  room.roundStarterId = "d8a";
+  startRound(room);
+  // simulate the table starter card having been an 8
+  room.pile = [{ id: "dealt-eight", rank: "8", suit: "S" }];
+  room.activeSuit = "S";
+  room.dealtAceBonus = 0;
+  room.dealtSevenBonus = 0;
+  room.dealtEightBonus = 1;
+
+  const starter = room.players.get("d8a")!;
+  const next = room.players.get("d8b")!;
+  const nextHandBefore = next.hand.length;
+  const unrelated: Card = { id: "unrelated-d8", rank: "9", suit: "S" }; // matches suit, nothing to do with the dealt 8
+  starter.hand.push(unrelated);
+
+  const res = applyPlayCards(room, "d8a", [unrelated.id]);
+  assert(res.ok, "starter plays an unrelated card, not touching the dealt 8 at all");
+  assert(next.hand.length === nextHandBefore + 1, "next player still received exactly 1 forced card from the dealt 8");
+  assert(room.dealtEightBonus === 0, "dealt-8 bonus is consumed after the first transition");
+}
+
+// --- Test 20: starter also throwing their own 8 stacks on top of the dealt 8's forced draw ---
+{
+  const room = createRoom("rd8b", "d8c", "Starter");
+  addPlayer(room, "d8d", "Next");
+  room.roundStarterId = "d8c";
+  startRound(room);
+  room.pile = [{ id: "dealt-eight2", rank: "8", suit: "H" }];
+  room.activeSuit = "H";
+  room.dealtAceBonus = 0;
+  room.dealtSevenBonus = 0;
+  room.dealtEightBonus = 1;
+
+  const starter = room.players.get("d8c")!;
+  const next = room.players.get("d8d")!;
+  const nextHandBefore = next.hand.length;
+  const ownEight: Card = { id: "own-eight", rank: "8", suit: "C" };
+  starter.hand.push(ownEight);
+
+  const res = applyPlayCards(room, "d8c", [ownEight.id]);
+  assert(res.ok, "starter throws their own 8 on top of the dealt 8");
+  assert(next.hand.length === nextHandBefore + 2, "next player receives 1 (dealt) + 1 (thrown) = 2 forced cards");
+}
+
+// --- Test 21: a dealt 7 (table starter card) sets up the same draw7-or-redirect obligation as an actively played 7 ---
+{
+  const room = createRoom("rd7a", "d7a", "Starter");
+  addPlayer(room, "d7b", "Next");
+  room.roundStarterId = "d7a";
+  startRound(room);
+  room.pile = [{ id: "dealt-seven", rank: "7", suit: "D" }];
+  room.activeSuit = "D";
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 2;
+
+  const starter = room.players.get("d7a")!;
+  const unrelated: Card = { id: "unrelated-d7", rank: "9", suit: "D" };
+  starter.hand.push(unrelated);
+
+  const res = applyPlayCards(room, "d7a", [unrelated.id]);
+  assert(res.ok, "starter plays an unrelated card, not touching the dealt 7 at all");
+  assert(room.pendingEffect?.type === "draw7" && room.pendingEffect.amount === 2, `next player faces a draw7 obligation of 2 from the dealt 7 (got ${JSON.stringify(room.pendingEffect)})`);
+  assert(room.dealtSevenBonus === 0, "dealt-7 bonus is consumed after the first transition");
+}
+
+// --- Test 22: starter also throwing their own 7 stacks on top of the dealt 7's obligation ---
+{
+  const room = createRoom("rd7b", "d7c", "Starter");
+  addPlayer(room, "d7d", "Next");
+  room.roundStarterId = "d7c";
+  startRound(room);
+  room.pile = [{ id: "dealt-seven2", rank: "7", suit: "C" }];
+  room.activeSuit = "C";
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 2;
+
+  const starter = room.players.get("d7c")!;
+  const ownSeven: Card = { id: "own-seven", rank: "7", suit: "H" };
+  starter.hand.push(ownSeven);
+
+  const res = applyPlayCards(room, "d7c", [ownSeven.id]);
+  assert(res.ok, "starter throws their own 7 on top of the dealt 7");
+  assert(room.pendingEffect?.type === "draw7" && room.pendingEffect.amount === 4, `obligation is 2 (dealt) + 2 (thrown) = 4 (got ${JSON.stringify(room.pendingEffect)})`);
 }
 
 console.log("\nDone.");

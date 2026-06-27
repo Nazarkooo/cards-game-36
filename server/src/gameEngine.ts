@@ -31,6 +31,8 @@ export interface RoomState {
   log: ActionLogEntry[];
   chat: ChatMessage[];
   dealtAceBonus: number; // one-time extra skip from an Ace dealt as the round's table starter card
+  dealtEightBonus: number; // one-time forced draw on the next player from an 8 dealt as the table starter card
+  dealtSevenBonus: number; // one-time draw7 obligation on the next player from a 7 dealt as the table starter card
   firstMoveOfRound: boolean; // the 4-card starter's dealt 5th card already counts as their card — they may skip without drawing, once
   pendingRoundEndWinnerId: string | null; // set when a player empties their hand on a 7 — round ends once the draw7 chain is actually resolved
   hasDrawnThisTurn: boolean; // caps a normal (non-six) voluntary/forced draw to exactly one card per turn
@@ -64,6 +66,8 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     log: [],
     chat: [],
     dealtAceBonus: 0,
+    dealtEightBonus: 0,
+    dealtSevenBonus: 0,
     firstMoveOfRound: false,
     pendingRoundEndWinnerId: null,
     hasDrawnThisTurn: false,
@@ -142,12 +146,38 @@ function mustCoverSix(state: RoomState): boolean {
   return topRank(state) === "6";
 }
 
+function pendingDraw7Amount(state: RoomState): number {
+  const pe = state.pendingEffect;
+  return pe && pe.type === "draw7" ? pe.amount : 0;
+}
+
 function advanceTurn(state: RoomState, steps: number): void {
   if (!state.order.length) return;
-  const bonus = state.dealtAceBonus;
+  const aceBonus = state.dealtAceBonus;
   state.dealtAceBonus = 0;
-  state.turnIndex = (state.turnIndex + steps + bonus) % state.order.length;
+  state.turnIndex = (state.turnIndex + steps + aceBonus) % state.order.length;
   state.hasDrawnThisTurn = false;
+
+  // a dealt 8 forces a draw on whoever the turn first lands on, exactly like an actively played 8
+  const eightBonus = state.dealtEightBonus;
+  if (eightBonus > 0) {
+    state.dealtEightBonus = 0;
+    const landedId = currentPlayerId(state);
+    const landed = landedId ? state.players.get(landedId) : null;
+    if (landed) {
+      const drawn = drawFromStock(state, eightBonus);
+      landed.hand.push(...drawn);
+      pushLog(state, `${landed.name} бере ${drawn.length} карт(и) (стартова 8)`);
+    }
+  }
+
+  // a dealt 7 sets up the same draw7-or-redirect obligation an actively played 7 would
+  const sevenBonus = state.dealtSevenBonus;
+  if (sevenBonus > 0) {
+    state.dealtSevenBonus = 0;
+    const baseAmount = state.pendingEffect?.type === "draw7" ? state.pendingEffect.amount : 0;
+    state.pendingEffect = { type: "draw7", amount: baseAmount + sevenBonus };
+  }
 }
 
 function removePlayerFromOrder(state: RoomState, id: string): void {
@@ -186,6 +216,10 @@ export function startRound(state: RoomState): void {
   state.activeSuit = tableStarter ? (tableStarter.rank === "J" ? null : tableStarter.suit) : null;
   // a dealt Ace already carries its skip effect, same as if it had just been played
   state.dealtAceBonus = tableStarter && tableStarter.rank === "A" ? 1 : 0;
+  // a dealt 8 already carries its forced-draw effect, same as if it had just been played
+  state.dealtEightBonus = tableStarter && tableStarter.rank === "8" ? 1 : 0;
+  // a dealt 7 already carries its draw7-or-redirect obligation, same as if it had just been played
+  state.dealtSevenBonus = tableStarter && tableStarter.rank === "7" ? 2 : 0;
   state.firstMoveOfRound = true;
   state.pendingRoundEndWinnerId = null;
   state.hasDrawnThisTurn = false;
@@ -256,7 +290,7 @@ export function applyPlayCards(
     }
   }
 
-  const carriedOverDrawSeven = state.pendingEffect?.type === "draw7" ? state.pendingEffect.amount : 0;
+  const carriedOverDrawSeven = pendingDraw7Amount(state);
   state.firstMoveOfRound = false;
 
   // Remove cards from hand, place on pile (in submitted order)
@@ -276,8 +310,9 @@ export function applyPlayCards(
   // player before the round can be considered over.
   if (rank === "7") {
     const addAmount = 2 * cards.length;
-    advanceTurn(state, 1);
-    state.pendingEffect = { type: "draw7", amount: carriedOverDrawSeven + addAmount };
+    advanceTurn(state, 1); // may itself inject a dealt-7 bonus into pendingEffect — read it back, don't clobber it
+    const justInjected = pendingDraw7Amount(state);
+    state.pendingEffect = { type: "draw7", amount: carriedOverDrawSeven + addAmount + justInjected };
   } else if (rank === "8") {
     advanceTurn(state, 1);
     const nextId = currentPlayerId(state);
