@@ -32,6 +32,7 @@ export interface RoomState {
   chat: ChatMessage[];
   dealtAceBonus: number; // one-time extra skip from an Ace dealt as the round's table starter card
   firstMoveOfRound: boolean; // the 4-card starter's dealt 5th card already counts as their card — they may skip without drawing, once
+  pendingRoundEndWinnerId: string | null; // set when a player empties their hand on a 7 — round ends once the draw7 chain is actually resolved
 }
 
 let logCounter = 0;
@@ -63,6 +64,7 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     chat: [],
     dealtAceBonus: 0,
     firstMoveOfRound: false,
+    pendingRoundEndWinnerId: null,
   };
   addPlayer(state, hostId, hostName);
   pushLog(state, `${hostName} створив(ла) кімнату`);
@@ -182,6 +184,7 @@ export function startRound(state: RoomState): void {
   // a dealt Ace already carries its skip effect, same as if it had just been played
   state.dealtAceBonus = tableStarter && tableStarter.rank === "A" ? 1 : 0;
   state.firstMoveOfRound = true;
+  state.pendingRoundEndWinnerId = null;
   state.pendingEffect = null;
   state.awaitingJackBonusFrom = null;
   state.jackBonusAmount = 0;
@@ -262,13 +265,11 @@ export function applyPlayCards(
 
   pushLog(state, `${player.name} кидає ${cards.length}x ${rank}${rank === "J" ? ` → масть ${declareSuit}` : ""}`);
 
-  // Player emptied hand -> round ends
-  if (player.hand.length === 0) {
-    finishRoundByWinner(state, player.id, rank === "J");
-    return { ok: true };
-  }
+  const handEmptied = player.hand.length === 0;
 
-  // Apply special effects to determine how turn advances
+  // Apply special effects to determine how turn advances. Even if the thrower just emptied
+  // their hand, a 7's draw obligation and an 8's forced draw must still land on the next
+  // player before the round can be considered over.
   if (rank === "7") {
     const addAmount = 2 * cards.length;
     advanceTurn(state, 1);
@@ -289,6 +290,15 @@ export function applyPlayCards(
     // the player who threw the 6 must immediately keep covering (or draw until they can) — turn stays with them
   } else {
     advanceTurn(state, 1);
+  }
+
+  if (handEmptied) {
+    if (rank === "7") {
+      // round-end is deferred until someone actually draws the accumulated cards instead of redirecting
+      if (!state.pendingRoundEndWinnerId) state.pendingRoundEndWinnerId = player.id;
+    } else {
+      finishRoundByWinner(state, player.id, rank === "J");
+    }
   }
 
   return { ok: true };
@@ -325,6 +335,11 @@ export function applyDrawCard(state: RoomState, playerId: string): ActionResult 
     state.pendingEffect = null;
     pushLog(state, `${player.name} бере ${drawn.length} карт(и) (7) і пропускає хід`);
     advanceTurn(state, 1);
+    if (state.pendingRoundEndWinnerId) {
+      const winnerId = state.pendingRoundEndWinnerId;
+      state.pendingRoundEndWinnerId = null;
+      finishRoundByWinner(state, winnerId, false);
+    }
     return { ok: true };
   }
 
@@ -419,6 +434,7 @@ export function applyChooseJackBonus(state: RoomState, playerId: string, mode: "
 
 function finishRoundByWinner(state: RoomState, winnerId: string, lastCardWasJack: boolean): void {
   state.phase = "roundOver";
+  state.pendingRoundEndWinnerId = null;
   const multiplier = state.roundMultiplier;
   const pointsAdded: Record<string, number> = {};
   for (const p of activePlayers(state)) {
@@ -449,6 +465,7 @@ function finishRoundByWinner(state: RoomState, winnerId: string, lastCardWasJack
 
 function finishRoundByBridge(state: RoomState, callerId: string): void {
   state.phase = "roundOver";
+  state.pendingRoundEndWinnerId = null;
   const multiplier = state.roundMultiplier * 2;
   const pointsAdded: Record<string, number> = {};
   for (const p of activePlayers(state)) {

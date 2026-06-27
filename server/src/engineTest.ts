@@ -278,4 +278,64 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   assert(passRes2.ok === false, "a normal (non-first) turn cannot pass without drawing first");
 }
 
+// --- Test 13: throwing your last card as a 7 defers round-end until the draw7 chain resolves ---
+{
+  const room = createRoom("rl7a", "l7a", "Thrower");
+  addPlayer(room, "l7b", "Redirector");
+  addPlayer(room, "l7c", "Drawer");
+  room.roundStarterId = "l7a";
+  startRound(room);
+  const top = room.pile[room.pile.length - 1];
+
+  const thrower = room.players.get("l7a")!;
+  const redirector = room.players.get("l7b")!;
+  const drawer = room.players.get("l7c")!;
+
+  // give the thrower exactly one card: a 7 matching the table
+  thrower.hand = [{ id: "last7", rank: "7", suit: top.suit }];
+  let res = applyPlayCards(room, "l7a", ["last7"]);
+  assert(res.ok, "thrower plays their last card as a 7");
+  assert(room.phase === "playing", "round is NOT over yet — the draw7 obligation hasn't been resolved");
+  assert(room.pendingRoundEndWinnerId === "l7a", "pending winner is recorded as the thrower");
+  assert(room.pendingEffect?.amount === 2, "pending draw amount is 2 after a single 7");
+
+  // redirector throws their own 7 instead of drawing — chain continues, round still not over
+  const redirectSeven: Card = { id: "redirect7", rank: "7", suit: "H" };
+  redirector.hand.push(redirectSeven);
+  res = applyPlayCards(room, "l7b", [redirectSeven.id]);
+  assert(res.ok, "redirector redirects with their own 7");
+  assert(room.phase === "playing", "round still not over after a redirect");
+  assert(room.pendingEffect?.amount === 4, "accumulated draw amount is now 4 (2+2)");
+  assert(room.pendingRoundEndWinnerId === "l7a", "pending winner is still the original thrower, not overwritten");
+
+  // drawer can't/doesn't redirect — draws the accumulated 4 cards, which finally resolves the round
+  const handBefore = drawer.hand.length;
+  res = applyDrawCard(room, "l7c");
+  assert(res.ok, "drawer accepts the accumulated draw");
+  assert(drawer.hand.length === handBefore + 4, "drawer received all 4 accumulated cards");
+  assert(room.phase === "roundOver" || room.phase === "sessionOver", "round ends only now, after the chain resolved");
+  assert(room.pendingRoundEndWinnerId === null, "pending winner flag is cleared once resolved");
+  assert(room.lastRoundSummary?.pointsAdded["l7a"] === 0, "original thrower (the actual winner) gets 0 points added");
+}
+
+// --- Test 14: throwing your last card as an 8 ends the round right after the forced next-player draw ---
+{
+  const room = createRoom("rl8a", "l8a", "Thrower");
+  addPlayer(room, "l8b", "Other");
+  room.roundStarterId = "l8a";
+  startRound(room);
+  const top = room.pile[room.pile.length - 1];
+
+  const thrower = room.players.get("l8a")!;
+  const other = room.players.get("l8b")!;
+  thrower.hand = [{ id: "last8", rank: "8", suit: top.suit }];
+
+  const otherHandBefore = other.hand.length;
+  const res = applyPlayCards(room, "l8a", ["last8"]);
+  assert(res.ok, "thrower plays their last card as an 8");
+  assert(other.hand.length === otherHandBefore + 1, "next player already received their forced draw from the 8");
+  assert(room.phase === "roundOver" || room.phase === "sessionOver", "round ends immediately — an 8 can't be redirected");
+  assert(room.lastRoundSummary?.pointsAdded["l8a"] === 0, "thrower (winner) gets 0 points added");
+}
+
 console.log("\nDone.");
