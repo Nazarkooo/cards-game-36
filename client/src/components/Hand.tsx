@@ -6,14 +6,15 @@ interface Props {
   cards: CardType[];
   selectedIds: string[];
   onToggle: (card: CardType) => void;
+  multiplier?: number;
 }
 
-export function Hand({ cards, selectedIds, onToggle }: Props) {
+export function Hand({ cards, selectedIds, onToggle, multiplier = 1 }: Props) {
   return (
     <div className="hand-scroll">
       <div className="hand-row">
         {cards.map((c) => (
-          <Card key={c.id} card={c} selected={selectedIds.includes(c.id)} onClick={() => onToggle(c)} />
+          <Card key={c.id} card={c} selected={selectedIds.includes(c.id)} onClick={() => onToggle(c)} multiplier={multiplier} />
         ))}
       </div>
     </div>

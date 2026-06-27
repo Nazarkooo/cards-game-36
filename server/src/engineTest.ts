@@ -391,4 +391,47 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   assert(res.ok === false, "cannot draw instead of covering a 6 while holding a card that covers it");
 }
 
+// --- Test 17: a normal (non-six) turn caps drawing at exactly one card, no matter how many times you ask ---
+{
+  const room = createRoom("rcap1", "cap1", "Player");
+  addPlayer(room, "cap2", "Other");
+  room.roundStarterId = "cap1";
+  startRound(room);
+  forceNeutralTop(room);
+  room.firstMoveOfRound = false;
+
+  const player = room.players.get("cap1")!;
+  const handBefore = player.hand.length;
+
+  const first = applyDrawCard(room, "cap1");
+  assert(first.ok, "first voluntary draw this turn succeeds");
+  assert(player.hand.length === handBefore + 1, "exactly one card was drawn");
+
+  const second = applyDrawCard(room, "cap1");
+  assert(second.ok === false, "a second draw on the same (non-six) turn is rejected");
+  assert(player.hand.length === handBefore + 1, "hand size unchanged after the rejected second draw");
+}
+
+// --- Test 18: a 6 is exempt from the one-draw cap — you may draw repeatedly until you can cover it ---
+{
+  const room = createRoom("rcap2", "cap3", "Player");
+  addPlayer(room, "cap4", "Other");
+  room.roundStarterId = "cap3";
+  startRound(room);
+  room.firstMoveOfRound = false;
+  room.pile = [{ id: "forced-six-cap", rank: "6", suit: "D" }];
+  room.activeSuit = "D";
+  room.players.get("cap3")!.hand = []; // empty hand: guaranteed no cover card, every draw must be allowed through
+  // pin the stock so the next two draws are deterministically non-covering (not diamonds, not a 6, not a jack)
+  room.stock = [
+    { id: "stockA", rank: "9", suit: "C" },
+    { id: "stockB", rank: "10", suit: "H" },
+  ];
+
+  const first = applyDrawCard(room, "cap3");
+  assert(first.ok, "first draw while covering a 6 succeeds");
+  const second = applyDrawCard(room, "cap3");
+  assert(second.ok, "a second consecutive draw while covering a 6 is still allowed (not capped at one like a normal turn)");
+}
+
 console.log("\nDone.");

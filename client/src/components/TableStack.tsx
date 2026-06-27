@@ -7,14 +7,15 @@ interface Props {
   activeSuit: Suit | null;
   stockCount: number;
   pileCount: number;
+  multiplier?: number;
 }
 
-export function TableStack({ topCard, activeSuit, stockCount, pileCount }: Props) {
+export function TableStack({ topCard, activeSuit, stockCount, pileCount, multiplier = 1 }: Props) {
   return (
     <div className="table-stack">
       <div className="stack-pile">
         <span className="stack-label">Стіл ({pileCount})</span>
-        {topCard ? <Card card={topCard} /> : <div className="card card-empty" />}
+        {topCard ? <Card card={topCard} multiplier={multiplier} /> : <div className="card card-empty" />}
         {activeSuit && (
           <span className="active-suit-badge">
             активна масть: <strong>{SUIT_SYMBOLS[activeSuit]}</strong>

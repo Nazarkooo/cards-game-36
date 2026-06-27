@@ -403,6 +403,27 @@ button {
 .card-corner-top { top: 5px; left: 7px; }
 .card-corner-bottom { bottom: 5px; right: 7px; transform: rotate(180deg); }
 
+.card-points {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(34, 211, 238, 0.92);
+  color: #06222a;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 1px 6px;
+  line-height: 1.4;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.card-points-boosted {
+  background: var(--gold);
+  color: #1c1404;
+  box-shadow: 0 0 8px rgba(240, 185, 77, 0.7);
+}
+
 .card-back {
   background:
     repeating-conic-gradient(from 45deg at 50% 50%, #2a1f47 0deg 90deg, #1c1430 90deg 180deg);

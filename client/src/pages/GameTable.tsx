@@ -78,10 +78,17 @@ export function GameTable({
     return hand.some((c) => isLegalCoverHint(c, state.topCard!.rank, state.activeSuit!));
   }, [hand, state.topCard, state.activeSuit]);
 
-  // drawing is a free choice any time — the one exception is a 6, which must be mandatorily
-  // covered (or drawn-until-covered) by whoever is holding a card that covers it
-  const mustCoverSixNow = state.topCard?.rank === "6" && hasAnyLegal;
-  const canDraw = isMyTurn && state.phase === "playing" && !state.awaitingJackBonusFrom && !needsSuitDeclare && !mustCoverSixNow;
+  // drawing is a free choice, capped at one card per normal turn. The one exception is a 6, which
+  // must be mandatorily covered (or drawn-until-covered, with no cap) by whoever holds the cover for it
+  const isSixActive = state.topCard?.rank === "6";
+  const mustCoverSixNow = isSixActive && hasAnyLegal;
+  const canDraw =
+    isMyTurn &&
+    state.phase === "playing" &&
+    !state.awaitingJackBonusFrom &&
+    !needsSuitDeclare &&
+    !mustCoverSixNow &&
+    (isSixActive || !state.hasDrawnThisTurn);
   // skipping without drawing is only allowed on the very first move of the round (the 4-card starter's dealt card already counts as theirs)
   const canPass =
     isMyTurn &&
@@ -163,7 +170,13 @@ export function GameTable({
 
       <PlayersRail players={state.players} myId={myId} turnPlayerId={state.turnPlayerId} hostId={state.hostId} />
 
-      <TableStack topCard={state.topCard} activeSuit={state.activeSuit} stockCount={state.stockCount} pileCount={state.pileCount} />
+      <TableStack
+        topCard={state.topCard}
+        activeSuit={state.activeSuit}
+        stockCount={state.stockCount}
+        pileCount={state.pileCount}
+        multiplier={state.roundMultiplier}
+      />
 
       <ActionLog log={state.log} />
 
@@ -210,7 +223,7 @@ export function GameTable({
         </div>
       )}
 
-      <Hand cards={hand} selectedIds={selectedIds} onToggle={(c) => toggle(c, hand)} />
+      <Hand cards={hand} selectedIds={selectedIds} onToggle={(c) => toggle(c, hand)} multiplier={state.roundMultiplier} />
 
       <div className="action-bar">
         <button className="btn btn-primary" disabled={!isMyTurn || !selectionIsLegal} onClick={handlePlayClick}>

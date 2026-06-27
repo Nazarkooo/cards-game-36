@@ -57,6 +57,7 @@ export interface PublicGameState {
   log: ActionLogEntry[];
   chat: ChatMessage[];
   canPassWithoutDraw: boolean;
+  hasDrawnThisTurn: boolean;
   winnerId: string | null; // session winner
   lastRoundSummary: RoundSummary | null;
 }

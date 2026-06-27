@@ -33,6 +33,7 @@ export interface RoomState {
   dealtAceBonus: number; // one-time extra skip from an Ace dealt as the round's table starter card
   firstMoveOfRound: boolean; // the 4-card starter's dealt 5th card already counts as their card — they may skip without drawing, once
   pendingRoundEndWinnerId: string | null; // set when a player empties their hand on a 7 — round ends once the draw7 chain is actually resolved
+  hasDrawnThisTurn: boolean; // caps a normal (non-six) voluntary/forced draw to exactly one card per turn
 }
 
 let logCounter = 0;
@@ -65,6 +66,7 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     dealtAceBonus: 0,
     firstMoveOfRound: false,
     pendingRoundEndWinnerId: null,
+    hasDrawnThisTurn: false,
   };
   addPlayer(state, hostId, hostName);
   pushLog(state, `${hostName} створив(ла) кімнату`);
@@ -145,6 +147,7 @@ function advanceTurn(state: RoomState, steps: number): void {
   const bonus = state.dealtAceBonus;
   state.dealtAceBonus = 0;
   state.turnIndex = (state.turnIndex + steps + bonus) % state.order.length;
+  state.hasDrawnThisTurn = false;
 }
 
 function removePlayerFromOrder(state: RoomState, id: string): void {
@@ -185,6 +188,7 @@ export function startRound(state: RoomState): void {
   state.dealtAceBonus = tableStarter && tableStarter.rank === "A" ? 1 : 0;
   state.firstMoveOfRound = true;
   state.pendingRoundEndWinnerId = null;
+  state.hasDrawnThisTurn = false;
   state.pendingEffect = null;
   state.awaitingJackBonusFrom = null;
   state.jackBonusAmount = 0;
@@ -347,7 +351,12 @@ export function applyDrawCard(state: RoomState, playerId: string): ActionResult 
     return { ok: false, error: "Потрібно накрити 6 — у вас є карта для цього" };
   }
 
+  if (!mustCoverSix(state) && state.hasDrawnThisTurn) {
+    return { ok: false, error: "За хід можна взяти лише 1 карту" };
+  }
+
   state.firstMoveOfRound = false;
+  if (!mustCoverSix(state)) state.hasDrawnThisTurn = true;
   const drawn = drawFromStock(state, 1);
   player.hand.push(...drawn);
   pushLog(state, `${player.name} бере карту`);
@@ -545,6 +554,7 @@ export function toPublicState(state: RoomState, forPlayerId: string): PublicGame
     log: state.log.slice(-20),
     chat: state.chat.slice(-50),
     canPassWithoutDraw: state.firstMoveOfRound,
+    hasDrawnThisTurn: state.hasDrawnThisTurn,
     winnerId: state.winnerId,
     lastRoundSummary: state.lastRoundSummary,
   };
