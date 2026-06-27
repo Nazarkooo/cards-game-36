@@ -16,6 +16,14 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   return c;
 }
 
+// startRound deals a genuinely random table-starter card, which can occasionally be a 6/A/J and
+// trip up tests that assume a "plain" top card. Force a neutral 9 so those tests are deterministic.
+function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"] = "S") {
+  room.pile = [{ id: "neutral-top", rank: "9", suit }];
+  room.activeSuit = suit;
+  room.dealtAceBonus = 0;
+}
+
 // --- Test 1: basic deal + legal move + A skip ---
 {
   const room = createRoom("rp1", "p1", "Andriy");
@@ -35,6 +43,7 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   addPlayer(room, "a3", "C");
   addPlayer(room, "a4", "D");
   startRound(room);
+  forceNeutralTop(room);
   // force a known top card and active suit, then give current player two Aces of matching suit
   const top = room.pile[room.pile.length - 1];
   const currentId = room.order[room.turnIndex];
@@ -54,6 +63,7 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   const room = createRoom("rs1", "s1", "A");
   addPlayer(room, "s2", "B");
   startRound(room);
+  forceNeutralTop(room);
   const top = room.pile[room.pile.length - 1];
   const p1 = room.order[room.turnIndex];
   const player1 = room.players.get(p1)!;
@@ -154,6 +164,7 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   const room = createRoom("rs6", "s6", "Thrower");
   addPlayer(room, "s6b", "Other");
   startRound(room);
+  forceNeutralTop(room);
   const top = room.pile[room.pile.length - 1];
   const throwerId = room.order[room.turnIndex];
   const thrower = room.players.get(throwerId)!;
@@ -263,6 +274,7 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   addPlayer(room, "fm2", "Second");
   room.roundStarterId = "fm1";
   startRound(room);
+  forceNeutralTop(room);
   assert(room.firstMoveOfRound === true, "firstMoveOfRound is true right after dealing");
 
   const starterId = room.order[room.turnIndex];
@@ -285,6 +297,7 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   addPlayer(room, "l7c", "Drawer");
   room.roundStarterId = "l7a";
   startRound(room);
+  forceNeutralTop(room);
   const top = room.pile[room.pile.length - 1];
 
   const thrower = room.players.get("l7a")!;
@@ -324,6 +337,7 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   addPlayer(room, "l8b", "Other");
   room.roundStarterId = "l8a";
   startRound(room);
+  forceNeutralTop(room);
   const top = room.pile[room.pile.length - 1];
 
   const thrower = room.players.get("l8a")!;
@@ -338,12 +352,13 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   assert(room.lastRoundSummary?.pointsAdded["l8a"] === 0, "thrower (winner) gets 0 points added");
 }
 
-// --- Test 15: you cannot draw on a normal turn when you already have a legal card to play ---
+// --- Test 15: a player may voluntarily draw even when they already have a legal card to play ---
 {
   const room = createRoom("rdr1", "dr1", "Player");
   addPlayer(room, "dr2", "Other");
   room.roundStarterId = "dr1";
   startRound(room);
+  forceNeutralTop(room);
   // resolve the first move so we're testing a genuinely "normal" turn, not the exempt opening one
   room.firstMoveOfRound = false;
 
@@ -351,9 +366,29 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   const player = room.players.get("dr1")!;
   const matching: Card = { id: "matchcard", rank: top.rank === "9" ? "10" : "9", suit: top.suit };
   player.hand.push(matching);
+  const handBefore = player.hand.length;
 
   const res = applyDrawCard(room, "dr1");
-  assert(res.ok === false, "drawing is rejected while a legal card is available");
+  assert(res.ok, "drawing is allowed even while a legal card is available — it's the player's choice");
+  assert(player.hand.length === handBefore + 1, "voluntary draw adds exactly one card");
+  assert(room.order[room.turnIndex] === "dr1", "turn stays with the player after a voluntary draw (they still must act)");
+}
+
+// --- Test 16: a 6 is the one exception — covering it is mandatory, never a free voluntary draw ---
+{
+  const room = createRoom("rdr2", "dr3", "Player");
+  addPlayer(room, "dr4", "Other");
+  room.roundStarterId = "dr3";
+  startRound(room);
+  room.firstMoveOfRound = false;
+  room.pile = [{ id: "forced-six", rank: "6", suit: "S" }];
+  room.activeSuit = "S";
+
+  const player = room.players.get("dr3")!;
+  player.hand.push({ id: "six-cover", rank: "6", suit: "H" });
+
+  const res = applyDrawCard(room, "dr3");
+  assert(res.ok === false, "cannot draw instead of covering a 6 while holding a card that covers it");
 }
 
 console.log("\nDone.");

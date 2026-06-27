@@ -78,13 +78,10 @@ export function GameTable({
     return hand.some((c) => isLegalCoverHint(c, state.topCard!.rank, state.activeSuit!));
   }, [hand, state.topCard, state.activeSuit]);
 
-  // you can only draw when you have nothing to play (or to accept an accumulated draw7) — never "just because"
-  const canDraw =
-    isMyTurn &&
-    state.phase === "playing" &&
-    !state.awaitingJackBonusFrom &&
-    !needsSuitDeclare &&
-    (state.pendingEffect?.type === "draw7" || !hasAnyLegal);
+  // drawing is a free choice any time — the one exception is a 6, which must be mandatorily
+  // covered (or drawn-until-covered) by whoever is holding a card that covers it
+  const mustCoverSixNow = state.topCard?.rank === "6" && hasAnyLegal;
+  const canDraw = isMyTurn && state.phase === "playing" && !state.awaitingJackBonusFrom && !needsSuitDeclare && !mustCoverSixNow;
   // skipping without drawing is only allowed on the very first move of the round (the 4-card starter's dealt card already counts as theirs)
   const canPass =
     isMyTurn &&
