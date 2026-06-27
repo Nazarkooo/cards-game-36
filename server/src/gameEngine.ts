@@ -31,6 +31,7 @@ export interface RoomState {
   log: ActionLogEntry[];
   chat: ChatMessage[];
   dealtAceBonus: number; // one-time extra skip from an Ace dealt as the round's table starter card
+  firstMoveOfRound: boolean; // the 4-card starter's dealt 5th card already counts as their card — they may skip without drawing, once
 }
 
 let logCounter = 0;
@@ -61,6 +62,7 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     log: [],
     chat: [],
     dealtAceBonus: 0,
+    firstMoveOfRound: false,
   };
   addPlayer(state, hostId, hostName);
   pushLog(state, `${hostName} створив(ла) кімнату`);
@@ -179,6 +181,7 @@ export function startRound(state: RoomState): void {
   state.activeSuit = tableStarter ? (tableStarter.rank === "J" ? null : tableStarter.suit) : null;
   // a dealt Ace already carries its skip effect, same as if it had just been played
   state.dealtAceBonus = tableStarter && tableStarter.rank === "A" ? 1 : 0;
+  state.firstMoveOfRound = true;
   state.pendingEffect = null;
   state.awaitingJackBonusFrom = null;
   state.jackBonusAmount = 0;
@@ -247,6 +250,7 @@ export function applyPlayCards(
   }
 
   const carriedOverDrawSeven = state.pendingEffect?.type === "draw7" ? state.pendingEffect.amount : 0;
+  state.firstMoveOfRound = false;
 
   // Remove cards from hand, place on pile (in submitted order)
   player.hand = player.hand.filter((h) => !cardIds.includes(h.id));
@@ -298,6 +302,7 @@ export function applyDeclareSuit(state: RoomState, playerId: string, suit: Suit)
   const player = state.players.get(playerId);
   if (!player) return { ok: false, error: "Гравця не знайдено" };
   state.activeSuit = suit;
+  state.firstMoveOfRound = false;
   pushLog(state, `${player.name} оголошує масть`);
   advanceTurn(state, 1);
   return { ok: true };
@@ -313,6 +318,7 @@ export function applyDrawCard(state: RoomState, playerId: string): ActionResult 
   if (!player) return { ok: false, error: "Гравця не знайдено" };
 
   if (state.pendingEffect?.type === "draw7") {
+    state.firstMoveOfRound = false;
     const amount = state.pendingEffect.amount;
     const drawn = drawFromStock(state, amount);
     player.hand.push(...drawn);
@@ -326,6 +332,7 @@ export function applyDrawCard(state: RoomState, playerId: string): ActionResult 
     return { ok: false, error: "Потрібно накрити 6 — у вас є карта для цього" };
   }
 
+  state.firstMoveOfRound = false;
   const drawn = drawFromStock(state, 1);
   player.hand.push(...drawn);
   pushLog(state, `${player.name} бере карту`);
@@ -346,14 +353,18 @@ export function applyPassTurn(state: RoomState, playerId: string): ActionResult 
   if (state.phase !== "playing") return { ok: false, error: "Раунд не триває" };
   if (currentPlayerId(state) !== playerId) return { ok: false, error: "Не ваш хід" };
   if (state.awaitingJackBonusFrom) return { ok: false, error: "Очікується вибір бонусу валета" };
+  if (!state.firstMoveOfRound) {
+    return { ok: false, error: "Пропустити без добору можна лише на першому ході роздачі" };
+  }
   if (state.activeSuit === null) return { ok: false, error: "Спочатку оголосіть масть або зіграйте Валета" };
   if (mustCoverSix(state)) return { ok: false, error: "Потрібно накрити 6" };
   if (state.pendingEffect?.type === "draw7") return { ok: false, error: "Зіграйте 7 або візьміть карти" };
 
   const player = state.players.get(playerId);
   if (!player) return { ok: false, error: "Гравця не знайдено" };
+  state.firstMoveOfRound = false;
   advanceTurn(state, 1);
-  pushLog(state, `${player.name} пропускає хід`);
+  pushLog(state, `${player.name} пропускає хід (перший хід роздачі)`);
   return { ok: true };
 }
 
@@ -516,6 +527,7 @@ export function toPublicState(state: RoomState, forPlayerId: string): PublicGame
     jackBonusAmount: state.jackBonusAmount,
     log: state.log.slice(-20),
     chat: state.chat.slice(-50),
+    canPassWithoutDraw: state.firstMoveOfRound,
     winnerId: state.winnerId,
     lastRoundSummary: state.lastRoundSummary,
   };

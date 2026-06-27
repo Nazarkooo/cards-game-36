@@ -74,7 +74,8 @@ export function GameTable({
   const needsSuitDeclare = isMyTurn && state.phase === "playing" && state.activeSuit === null;
 
   const canDraw = isMyTurn && state.phase === "playing" && !state.awaitingJackBonusFrom && !needsSuitDeclare;
-  const canPass = canDraw && state.pendingEffect?.type !== "draw7" && state.topCard?.rank !== "6";
+  // skipping without drawing is only allowed on the very first move of the round (the 4-card starter's dealt card already counts as theirs)
+  const canPass = canDraw && state.canPassWithoutDraw && state.pendingEffect?.type !== "draw7" && state.topCard?.rank !== "6";
 
   const hasAnyLegal = useMemo(() => {
     if (!state.topCard || !state.activeSuit) return false;
@@ -172,7 +173,11 @@ export function GameTable({
 
       <div className="turn-indicator">
         {isMyTurn ? <strong>Ваш хід</strong> : <span>Хід: {state.players.find((p) => p.id === state.turnPlayerId)?.name ?? "?"}</span>}
-        {isMyTurn && !needsSuitDeclare && !hasAnyLegal && !state.pendingEffect && <span className="hint-text"> — немає ходу, візьміть карту</span>}
+        {isMyTurn && !needsSuitDeclare && !hasAnyLegal && !state.pendingEffect && (
+          <span className="hint-text">
+            {state.canPassWithoutDraw ? " — немає ходу, можете пропустити без добору або взяти карту" : " — немає ходу, візьміть карту"}
+          </span>
+        )}
         {!isMyTurn && state.activeSuit === null && (
           <span className="hint-text"> — очікуємо вибір масті</span>
         )}

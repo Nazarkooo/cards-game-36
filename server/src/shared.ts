@@ -56,6 +56,7 @@ export interface PublicGameState {
   jackBonusAmount: number;
   log: ActionLogEntry[];
   chat: ChatMessage[];
+  canPassWithoutDraw: boolean;
   winnerId: string | null; // session winner
   lastRoundSummary: RoundSummary | null;
 }

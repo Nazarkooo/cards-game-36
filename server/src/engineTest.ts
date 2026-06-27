@@ -1,4 +1,4 @@
-import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPlayCards, createRoom, startRound, toPublicState } from "./gameEngine.js";
+import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, createRoom, startRound, toPublicState } from "./gameEngine.js";
 import { Card } from "./shared.js";
 
 function assert(cond: boolean, msg: string) {
@@ -239,6 +239,7 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   startRound(room);
   room.pile = [{ id: "forced-jack", rank: "J", suit: "C" }];
   room.activeSuit = null; // suit not declared yet, exactly as startRound would set it for a dealt jack
+  room.dealtAceBonus = 0; // neutralize whatever the real random deal happened to set
 
   const starter = room.players.get("jk1")!;
   const unrelatedCard: Card = { id: "unrelated1", rank: "9", suit: "C" };
@@ -254,6 +255,27 @@ function findInHand(cards: Card[], rank: string, suit?: string): Card {
   assert(declareRes.ok, "starter declares a suit for the dealt jack");
   assert(room.activeSuit === "D", "active suit is now what the starter declared");
   assert(room.order[room.turnIndex] === "jk2", "turn passes to the next player after the suit is declared");
+}
+
+// --- Test 12: starter may pass without drawing on the first move only ---
+{
+  const room = createRoom("rfm1", "fm1", "Starter");
+  addPlayer(room, "fm2", "Second");
+  room.roundStarterId = "fm1";
+  startRound(room);
+  assert(room.firstMoveOfRound === true, "firstMoveOfRound is true right after dealing");
+
+  const starterId = room.order[room.turnIndex];
+  const stockBefore = room.stock.length;
+  const passRes = applyPassTurn(room, starterId);
+  assert(passRes.ok, "starter can pass on their very first move without holding a matching card");
+  assert(room.stock.length === stockBefore, "passing on the first move does not draw any card");
+  assert(room.firstMoveOfRound === false, "firstMoveOfRound is consumed after the first move");
+
+  // now it's the second player's turn — a normal mid-round turn must NOT allow a free pass
+  const secondId = room.order[room.turnIndex];
+  const passRes2 = applyPassTurn(room, secondId);
+  assert(passRes2.ok === false, "a normal (non-first) turn cannot pass without drawing first");
 }
 
 console.log("\nDone.");
