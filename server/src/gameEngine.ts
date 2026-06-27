@@ -336,7 +336,7 @@ export function applyPlayCards(
       // round-end is deferred until someone actually draws the accumulated cards instead of redirecting
       if (!state.pendingRoundEndWinnerId) state.pendingRoundEndWinnerId = player.id;
     } else {
-      finishRoundByWinner(state, player.id, rank === "J");
+      finishRoundByWinner(state, player.id, cards);
     }
   }
 
@@ -377,7 +377,7 @@ export function applyDrawCard(state: RoomState, playerId: string): ActionResult 
     if (state.pendingRoundEndWinnerId) {
       const winnerId = state.pendingRoundEndWinnerId;
       state.pendingRoundEndWinnerId = null;
-      finishRoundByWinner(state, winnerId, false);
+      finishRoundByWinner(state, winnerId, []);
     }
     return { ok: true };
   }
@@ -476,7 +476,7 @@ export function applyChooseJackBonus(state: RoomState, playerId: string, mode: "
 
 // --- Round finishing ---
 
-function finishRoundByWinner(state: RoomState, winnerId: string, lastCardWasJack: boolean): void {
+function finishRoundByWinner(state: RoomState, winnerId: string, winningCards: Card[]): void {
   state.phase = "roundOver";
   state.pendingRoundEndWinnerId = null;
   const multiplier = state.roundMultiplier;
@@ -485,7 +485,6 @@ function finishRoundByWinner(state: RoomState, winnerId: string, lastCardWasJack
     pointsAdded[p.id] = p.id === winnerId ? 0 : handValue(p.hand) * multiplier;
   }
   const winner = state.players.get(winnerId)!;
-  const lastCard = state.pile[state.pile.length - 1];
   const summary: RoundSummary = {
     multiplier,
     pointsAdded,
@@ -497,10 +496,12 @@ function finishRoundByWinner(state: RoomState, winnerId: string, lastCardWasJack
   state.lastRoundSummary = summary;
   state.roundStarterId = winnerId;
 
-  if (lastCardWasJack && lastCard?.rank === "J") {
-    state.jackBonusAmount = lastCard.suit === "S" ? 40 : 20;
+  const isJackEnding = winningCards.length > 0 && winningCards[0].rank === "J";
+  if (isJackEnding) {
+    // each jack thrown contributes its own value (20, or 40 for the spade jack), scaled by the round's multiplier
+    state.jackBonusAmount = handValue(winningCards) * multiplier;
     state.awaitingJackBonusFrom = winnerId;
-    pushLog(state, `${winner.name} завершує раунд Валетом — обирає бонус`);
+    pushLog(state, `${winner.name} завершує раунд ${winningCards.length}x Валет — обирає бонус`);
     return; // wait for choose_jack_bonus
   }
 

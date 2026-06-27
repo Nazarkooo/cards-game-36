@@ -537,4 +537,57 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   assert(room.pendingEffect?.type === "draw7" && room.pendingEffect.amount === 4, `obligation is 2 (dealt) + 2 (thrown) = 4 (got ${JSON.stringify(room.pendingEffect)})`);
 }
 
+// --- Test 23: ending with multiple jacks sums each jack's own value (20, or 40 for the spade jack) ---
+{
+  const room = createRoom("rjm1", "jm1", "Winner");
+  addPlayer(room, "jm2", "Loser");
+  startRound(room);
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
+  const winnerId = room.order[room.turnIndex];
+  const winner = room.players.get(winnerId)!;
+  const otherId = room.order.find((id) => id !== winnerId)!;
+  room.players.get(otherId)!.hand = [{ id: "zero2", rank: "9", suit: "S" }];
+
+  // two jacks: club (20) + spade (40) = 60 total
+  const jClub: Card = { id: "jclub", rank: "J", suit: "C" };
+  const jSpade: Card = { id: "jspade", rank: "J", suit: "S" };
+  winner.hand = [jClub, jSpade];
+  const res = applyPlayCards(room, winnerId, [jClub.id, jSpade.id], "H");
+  assert(res.ok, "winner throws 2 jacks (club + spade) as their last play");
+  assert(room.jackBonusAmount === 60, `bonus is the sum of both jacks' values: 20+40=60 (got ${room.jackBonusAmount})`);
+
+  applyChooseJackBonus(room, winnerId, "self");
+  assert(room.players.get(winnerId)!.score === -60, `winner's score reflects -60 from choosing "self" (got ${room.players.get(winnerId)!.score})`);
+}
+
+// --- Test 24: the jack bonus scales with the round's deck-reshuffle multiplier ---
+{
+  const room = createRoom("rjm2", "jm3", "Winner");
+  addPlayer(room, "jm4", "Loser");
+  startRound(room);
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
+  room.roundMultiplier = 3; // simulate the deck having reshuffled twice (x3)
+  const winnerId = room.order[room.turnIndex];
+  const winner = room.players.get(winnerId)!;
+  const otherId = room.order.find((id) => id !== winnerId)!;
+  room.players.get(otherId)!.hand = [{ id: "zero3", rank: "9", suit: "S" }];
+
+  const jHeart: Card = { id: "jheart", rank: "J", suit: "H" }; // base 20
+  winner.hand = [jHeart];
+  const res = applyPlayCards(room, winnerId, [jHeart.id], "D");
+  assert(res.ok, "winner ends with a single heart jack under a x3 round");
+  assert(room.jackBonusAmount === 60, `20 base x3 multiplier = 60 (got ${room.jackBonusAmount})`);
+
+  const otherScoreBefore = room.players.get(otherId)!.score;
+  applyChooseJackBonus(room, winnerId, "all");
+  assert(
+    room.players.get(otherId)!.score === otherScoreBefore + 60,
+    `"all" mode adds the x3-scaled 60 to the other player (got ${room.players.get(otherId)!.score})`
+  );
+}
+
 console.log("\nDone.");
