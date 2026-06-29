@@ -1,5 +1,5 @@
 import type { Server, Socket } from "socket.io";
-import { applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, applySendChat, startRound, toPublicState } from "./gameEngine.js";
+import { applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, applySendChat, resetSession, startRound, toPublicState } from "./gameEngine.js";
 import { createRoom, deleteRoomIfEmpty, getRoom, joinRoom } from "./rooms.js";
 import type { ClientToServerEvents, ServerToClientEvents } from "./shared.js";
 
@@ -62,6 +62,9 @@ export function registerSocketHandlers(io: Server<ClientToServerEvents, ServerTo
       socket.emit("error_msg", { message: "Тільки хост може почати гру" });
       return;
     }
+    if (state.phase === "sessionOver") {
+      resetSession(state);
+    }
     const active = [...state.players.values()].filter((p) => !p.eliminated);
     if (active.length < 2) {
       socket.emit("error_msg", { message: "Потрібно щонайменше 2 гравці" });
@@ -69,10 +72,6 @@ export function registerSocketHandlers(io: Server<ClientToServerEvents, ServerTo
     }
     if (active.length > 5) {
       socket.emit("error_msg", { message: "Максимум 5 гравців" });
-      return;
-    }
-    if (state.phase === "sessionOver") {
-      socket.emit("error_msg", { message: "Сесія завершена" });
       return;
     }
     startRound(state);

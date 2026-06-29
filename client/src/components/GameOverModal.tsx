@@ -48,14 +48,15 @@ export function GameOverModal({ phase, summary, players, winnerId, isHost, onCon
           <p className="winner-line">Переможець сесії: 🏆 {nameOf(winnerId)}</p>
         )}
 
-        {phase === "roundOver" &&
-          (isHost ? (
-            <button className="btn btn-primary" onClick={onContinue}>
-              Наступний раунд
-            </button>
-          ) : (
-            <p className="status-warn">Очікуємо, поки хост почне наступний раунд...</p>
-          ))}
+        {isHost ? (
+          <button className="btn btn-primary" onClick={onContinue}>
+            {phase === "sessionOver" ? "Нова гра" : "Наступний раунд"}
+          </button>
+        ) : (
+          <p className="status-warn">
+            {phase === "sessionOver" ? "Очікуємо, поки хост почне нову гру..." : "Очікуємо, поки хост почне наступний раунд..."}
+          </p>
+        )}
       </div>
     </div>
   );

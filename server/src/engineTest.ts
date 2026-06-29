@@ -1,4 +1,4 @@
-import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, createRoom, startRound, toPublicState } from "./gameEngine.js";
+import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, createRoom, resetSession, startRound, toPublicState } from "./gameEngine.js";
 import { Card } from "./shared.js";
 
 function assert(cond: boolean, msg: string) {
@@ -588,6 +588,34 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
     room.players.get(otherId)!.score === otherScoreBefore + 60,
     `"all" mode adds the x3-scaled 60 to the other player (got ${room.players.get(otherId)!.score})`
   );
+}
+
+// --- Test 25: a finished session can be replayed from scratch via resetSession + startRound ---
+{
+  const room = createRoom("rses1", "se1", "Winner");
+  addPlayer(room, "se2", "Eliminated");
+  startRound(room);
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
+
+  const winner = room.players.get("se1")!;
+  const loser = room.players.get("se2")!;
+  loser.score = 305;
+  loser.eliminated = true;
+  winner.score = 120;
+  room.phase = "sessionOver";
+  room.winnerId = "se1";
+  room.order = ["se1"]; // only the winner remains active, as a real finished session would leave it
+
+  resetSession(room);
+  assert(winner.score === 0 && loser.score === 0, "both players' scores reset to 0");
+  assert((loser.eliminated as boolean) === false, "previously eliminated player is reinstated for the new session");
+  assert(room.winnerId === null, "session winner is cleared");
+
+  startRound(room);
+  assert((room.phase as string) === "playing", "a new round starts normally after resetting the session");
+  assert(room.order.length === 2, "both players are active again in the new session's turn order");
 }
 
 console.log("\nDone.");

@@ -190,6 +190,19 @@ function removePlayerFromOrder(state: RoomState, id: string): void {
 
 // --- Dealing / round start ---
 
+// Wipes scores/eliminations so a finished session can be replayed from scratch in the same room.
+export function resetSession(state: RoomState): void {
+  for (const p of state.players.values()) {
+    p.score = 0;
+    p.eliminated = false;
+    p.hand = [];
+  }
+  state.winnerId = null;
+  state.roundStarterId = null;
+  state.lastRoundSummary = null;
+  state.log = [];
+}
+
 export function startRound(state: RoomState): void {
   const eligible = [...state.players.values()].filter((p) => !p.eliminated);
   const deck = freshDeck();
