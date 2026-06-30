@@ -35,6 +35,14 @@ export interface ChatMessage {
   ts: number;
 }
 
+export interface ThrowEvent {
+  id: string;
+  playerId: string;
+  playerName: string;
+  cards: Card[];
+  ts: number;
+}
+
 export interface PublicGameState {
   roomId: string;
   phase: "lobby" | "playing" | "roundOver" | "sessionOver";
@@ -45,7 +53,7 @@ export interface PublicGameState {
     hand: Card[];
   };
   topCard: Card | null;
-  recentPile: Card[]; // last few cards on the discard pile, oldest first — for visualizing recent throws
+  throwHistory: ThrowEvent[]; // recent throws (grouped by play), most recent last — for the history sidebar
   activeSuit: Suit | null;
   stockCount: number;
   pileCount: number;
@@ -84,6 +92,7 @@ export type ClientToServerEvents = {
   leave_room: () => void;
   send_chat: (data: { text: string }) => void;
   declare_suit: (data: { suit: Suit }) => void;
+  rejoin_session: () => void;
 };
 
 export type ServerToClientEvents = {

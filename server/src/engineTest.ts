@@ -1,4 +1,4 @@
-import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, createRoom, resetSession, startRound, toPublicState } from "./gameEngine.js";
+import { addPlayer, applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, applyRejoinSession, createRoom, resetSession, startRound, toPublicState } from "./gameEngine.js";
 import { Card } from "./shared.js";
 
 function assert(cond: boolean, msg: string) {
@@ -133,6 +133,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = false;
   const winnerId = room.order[room.turnIndex];
   const winner = room.players.get(winnerId)!;
   const top = room.pile[room.pile.length - 1];
@@ -551,6 +552,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = false;
   const winnerId = room.order[room.turnIndex];
   const winner = room.players.get(winnerId)!;
   const otherId = room.order.find((id) => id !== winnerId)!;
@@ -576,6 +578,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = false;
   room.roundMultiplier = 3; // simulate the deck having reshuffled twice (x3)
   const winnerId = room.order[room.turnIndex];
   const winner = room.players.get(winnerId)!;
@@ -604,6 +607,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = false;
 
   const winner = room.players.get("se1")!;
   const loser = room.players.get("se2")!;
@@ -714,6 +718,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = false;
   const winnerId = room.order[room.turnIndex];
   const winner = room.players.get(winnerId)!;
   winner.hand = [{ id: "lastjack", rank: "J", suit: "H" }];
@@ -741,6 +746,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = true; // this test exercises the round-opening restriction itself
 
   const starter = room.players.get("f4a")!;
   const suitMatchWrongRank: Card = { id: "suitmatch", rank: "9", suit: "S" }; // matches suit, wrong rank
@@ -765,10 +771,130 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = true; // this test exercises the round-opening restriction itself
   room.players.get("f4c")!.hand = [{ id: "unrelated-k", rank: "9", suit: "H" }]; // matches suit only, no King
 
   const res = applyPassTurn(room, "f4c");
   assert(res.ok, "starter with no matching-rank card can still just pass without drawing");
+}
+
+// --- Test 32: a Jack is NOT a wild exception on the round-opening move for a plain dealt card ---
+{
+  const room = createRoom("rf32", "g32a", "Starter");
+  addPlayer(room, "g32b", "Second");
+  room.roundStarterId = "g32a";
+  startRound(room);
+  room.pile = [{ id: "dealt-q32", rank: "Q", suit: "S" }];
+  room.activeSuit = "S";
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
+  room.firstMoveOfRound = true;
+
+  const starter = room.players.get("g32a")!;
+  const jack: Card = { id: "j32", rank: "J", suit: "H" };
+  starter.hand.push(jack);
+  const res = applyPlayCards(room, "g32a", [jack.id], "D");
+  assert(res.ok === false, "a Jack cannot be used to cover the round-opening dealt card — only an exact rank match works");
+}
+
+// --- Test 33: Bridge cannot be called while a draw7 obligation is still unresolved ---
+{
+  const room = createRoom("rf33", "g33a", "Thrower");
+  addPlayer(room, "g33b", "Other");
+  room.roundStarterId = "g33a";
+  startRound(room);
+  forceNeutralTop(room);
+  const top = room.pile[room.pile.length - 1];
+  const thrower = room.players.get("g33a")!;
+  const seven: Card = { id: "s33", rank: "7", suit: top.suit };
+  thrower.hand.push(seven);
+  applyPlayCards(room, "g33a", [seven.id]);
+  // also fabricate a 4-of-a-kind so bridge WOULD otherwise be available
+  room.pile.push({ id: "k33a", rank: "K", suit: "S" }, { id: "k33b", rank: "K", suit: "H" }, { id: "k33c", rank: "K", suit: "D" }, { id: "k33d", rank: "K", suit: "C" });
+  room.lastCardPlayedBy = "g33a";
+  assert(room.pendingEffect?.type === "draw7", "a draw7 obligation is pending");
+  const res = applyCallBridge(room, "g33a");
+  assert(res.ok === false, "Bridge is rejected while a draw7 obligation is still unresolved");
+}
+
+// --- Test 34 (the real wraparound bug): a 2-player 7-chain that wraps back to the original thrower
+// must NOT end the round if the thrower ends up holding cards again after being forced to draw ---
+{
+  const room = createRoom("rf34", "g34a", "Thrower");
+  addPlayer(room, "g34b", "Redirector");
+  room.roundStarterId = "g34a";
+  startRound(room);
+  forceNeutralTop(room);
+  const top = room.pile[room.pile.length - 1];
+
+  const thrower = room.players.get("g34a")!;
+  const redirector = room.players.get("g34b")!;
+  thrower.hand = [{ id: "last7-34", rank: "7", suit: top.suit }]; // thrower's only card
+  let res = applyPlayCards(room, "g34a", ["last7-34"]);
+  assert(res.ok, "thrower plays their last card as a 7");
+  assert(room.pendingRoundEndWinnerId === "g34a", "round-end is pending on the thrower");
+
+  // redirector has their own 7 and redirects instead of drawing — the obligation bounces back to the thrower
+  const ownSeven: Card = { id: "redirect7-34", rank: "7", suit: "H" };
+  redirector.hand.push(ownSeven);
+  res = applyPlayCards(room, "g34b", [ownSeven.id]);
+  assert(res.ok, "redirector redirects with their own 7 instead of drawing");
+  assert(room.order[room.turnIndex] === "g34a", "turn bounces back to the original (now empty-handed) thrower");
+
+  // the thrower has no 7 to redirect with, so they must draw — this should NOT end the round, since
+  // they now hold the accumulated cards themselves
+  const drawRes = applyDrawCard(room, "g34a");
+  assert(drawRes.ok, "thrower is forced to draw the accumulated cards");
+  assert(thrower.hand.length > 0, "thrower's hand is no longer empty after drawing");
+  assert((room.phase as string) === "playing", "the round does NOT end — the thrower has cards again, so they can't be the winner");
+  assert(room.pendingRoundEndWinnerId === null, "the stale pending-winner flag is cleared either way");
+}
+
+// --- Test 35: passing is allowed after a voluntary draw, even with a legal card available ---
+{
+  const room = createRoom("rf35", "g35a", "Player");
+  addPlayer(room, "g35b", "Other");
+  room.roundStarterId = "g35a";
+  startRound(room);
+  forceNeutralTop(room);
+  const top = room.pile[room.pile.length - 1];
+  const player = room.players.get("g35a")!;
+  const matching: Card = { id: "m35", rank: top.rank === "9" ? "10" : "9", suit: top.suit };
+  player.hand.push(matching);
+
+  const blockedPass = applyPassTurn(room, "g35a");
+  assert(blockedPass.ok === false, "cannot pass before drawing, even intending to hold a playable card");
+
+  const drawRes = applyDrawCard(room, "g35a");
+  assert(drawRes.ok, "voluntary draw succeeds");
+  const passRes = applyPassTurn(room, "g35a");
+  assert(passRes.ok, "after drawing once, the player may now pass instead of playing their legal card");
+}
+
+// --- Test 36: an eliminated player can rejoin mid-session at the current leader's score ---
+{
+  const room = createRoom("rf36", "g36a", "Eliminated");
+  addPlayer(room, "g36b", "Leader");
+  addPlayer(room, "g36c", "Other");
+  const elim = room.players.get("g36a")!;
+  const leader = room.players.get("g36b")!;
+  const other = room.players.get("g36c")!;
+  elim.eliminated = true;
+  elim.score = 305;
+  leader.score = 210;
+  other.score = 90;
+  const idx = room.order.indexOf("g36a");
+  if (idx >= 0) room.order.splice(idx, 1);
+
+  const blocked = applyRejoinSession(room, "g36b");
+  assert(blocked.ok === false, "a non-eliminated player cannot use rejoin");
+
+  const res = applyRejoinSession(room, "g36a");
+  assert(res.ok, "the eliminated player rejoins successfully");
+  assert((elim.eliminated as boolean) === false, "player is no longer marked eliminated");
+  assert(elim.score === 210, `rejoining player's score matches the current leader's score (got ${elim.score})`);
+  assert(room.order.includes("g36a"), "rejoined player is back in the turn order");
 }
 
 console.log("\nDone.");

@@ -7,6 +7,7 @@ interface Props {
   turnPlayerId: string | null;
   hostId: string;
   dealTrigger?: number;
+  bubbles?: Record<string, { text: string; key: string }>;
   children: ReactNode;
 }
 
@@ -28,7 +29,7 @@ interface FlyingCard {
   delay: number;
 }
 
-export function RoundTable({ players, myId, turnPlayerId, hostId, dealTrigger, children }: Props) {
+export function RoundTable({ players, myId, turnPlayerId, hostId, dealTrigger, bubbles, children }: Props) {
   const myIndex = players.findIndex((p) => p.id === myId);
   const ordered = myIndex >= 0 ? [...players.slice(myIndex), ...players.slice(0, myIndex)] : players;
   const angles = seatAngles(ordered.length);
@@ -94,6 +95,11 @@ export function RoundTable({ players, myId, turnPlayerId, hostId, dealTrigger, c
                 <span className={p.score > 250 ? "score-warn" : ""}>{p.score}</span>
               </div>
             </div>
+            {bubbles?.[p.id] && (
+              <div className="seat-bubble" key={bubbles[p.id].key}>
+                {bubbles[p.id].text}
+              </div>
+            )}
           </div>
         );
       })}

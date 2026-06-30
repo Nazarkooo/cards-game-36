@@ -26,6 +26,8 @@ export function ChatPanel({ messages, myId, open, onClose, onSend }: Props) {
     setText("");
   };
 
+  const QUICK_EMOJI = ["😡", "🤬", "😂", "👍", "🔥", "😢", "🤔", "🎉"];
+
   return (
     <>
       {open && <div className="chat-overlay" onClick={onClose} />}
@@ -43,6 +45,13 @@ export function ChatPanel({ messages, myId, open, onClose, onSend }: Props) {
               <span className="chat-msg-name">{m.name}</span>
               <span className="chat-msg-text">{m.text}</span>
             </div>
+          ))}
+        </div>
+        <div className="chat-emoji-row">
+          {QUICK_EMOJI.map((e) => (
+            <button key={e} className="chat-emoji-btn" onClick={() => onSend(e)}>
+              {e}
+            </button>
           ))}
         </div>
         <div className="chat-input-row">

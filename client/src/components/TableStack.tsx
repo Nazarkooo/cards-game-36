@@ -3,36 +3,19 @@ import { SUIT_SYMBOLS } from "../shared";
 import { Card } from "./Card";
 
 interface Props {
-  recentPile: CardType[];
+  topCard: CardType | null;
   activeSuit: Suit | null;
   stockCount: number;
   pileCount: number;
   multiplier?: number;
 }
 
-export function TableStack({ recentPile, activeSuit, stockCount, pileCount, multiplier = 1 }: Props) {
+export function TableStack({ topCard, activeSuit, stockCount, pileCount, multiplier = 1 }: Props) {
   return (
     <div className="table-stack">
       <div className="stack-pile">
         <span className="stack-label">Стіл ({pileCount})</span>
-        <div className="discard-fan">
-          {recentPile.length === 0 && <div className="card card-empty" />}
-          {recentPile.map((c, i) => {
-            const isTop = i === recentPile.length - 1;
-            return (
-              <div
-                key={c.id}
-                className="discard-fan-card"
-                style={{
-                  transform: `translate(${i * 6}px, ${i * 5}px) rotate(${(i % 2 === 0 ? -1 : 1) * Math.min(i, 4)}deg)`,
-                  zIndex: i,
-                }}
-              >
-                <Card card={c} multiplier={isTop ? multiplier : 1} />
-              </div>
-            );
-          })}
-        </div>
+        {topCard ? <Card card={topCard} multiplier={multiplier} /> : <div className="card card-empty" />}
         {activeSuit && (
           <span className="active-suit-badge">
             активна масть: <strong>{SUIT_SYMBOLS[activeSuit]}</strong>

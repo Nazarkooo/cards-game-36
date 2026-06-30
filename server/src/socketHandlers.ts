@@ -1,5 +1,5 @@
 import type { Server, Socket } from "socket.io";
-import { applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, applySendChat, resetSession, startRound, toPublicState } from "./gameEngine.js";
+import { applyCallBridge, applyChooseJackBonus, applyDeclareSuit, applyDrawCard, applyPassTurn, applyPlayCards, applyRejoinSession, applySendChat, resetSession, startRound, toPublicState } from "./gameEngine.js";
 import { createRoom, deleteRoomIfEmpty, getRoom, joinRoom } from "./rooms.js";
 import type { ClientToServerEvents, ServerToClientEvents } from "./shared.js";
 
@@ -162,6 +162,18 @@ export function registerSocketHandlers(io: Server<ClientToServerEvents, ServerTo
     const state = getRoom(joinedRoomId);
     if (!state) return;
     const result = applyDeclareSuit(state, playerId, suit);
+    if (!result.ok) {
+      socket.emit("error_msg", { message: result.error });
+      return;
+    }
+    broadcast(io, state.roomId);
+  });
+
+  socket.on("rejoin_session", () => {
+    if (!joinedRoomId || !playerId) return;
+    const state = getRoom(joinedRoomId);
+    if (!state) return;
+    const result = applyRejoinSession(state, playerId);
     if (!result.ok) {
       socket.emit("error_msg", { message: result.error });
       return;

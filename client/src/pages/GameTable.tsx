@@ -11,6 +11,7 @@ import { GameOverModal } from "../components/GameOverModal";
 import { ChatPanel } from "../components/ChatPanel";
 import { ActiveSuitBadge } from "../components/ActiveSuitBadge";
 import { RoundTable } from "../components/RoundTable";
+import { HistoryPanel } from "../components/HistoryPanel";
 import { playShuffleSound } from "../sound";
 
 interface Props {
@@ -25,6 +26,7 @@ interface Props {
   onLeaveRoom: () => void;
   onSendChat: (text: string) => void;
   onDeclareSuit: (suit: Suit) => void;
+  onRejoinSession: () => void;
 }
 
 function ChatFab({ unread, onClick }: { unread: number; onClick: () => void }) {
@@ -32,6 +34,14 @@ function ChatFab({ unread, onClick }: { unread: number; onClick: () => void }) {
     <button className="chat-fab" onClick={onClick}>
       💬
       {unread > 0 && <span className="chat-fab-badge">{unread > 9 ? "9+" : unread}</span>}
+    </button>
+  );
+}
+
+function HistoryFab({ onClick }: { onClick: () => void }) {
+  return (
+    <button className="history-fab" onClick={onClick}>
+      🂡
     </button>
   );
 }
@@ -48,11 +58,13 @@ export function GameTable({
   onLeaveRoom,
   onSendChat,
   onDeclareSuit,
+  onRejoinSession,
 }: Props) {
   const { selectedIds, toggle, clear } = useCardSelection();
   const [showScores, setShowScores] = useState(false);
   const [pendingSuitPick, setPendingSuitPick] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [lastSeenChatCount, setLastSeenChatCount] = useState(0);
   const unreadChat = Math.max(0, state.chat.length - lastSeenChatCount);
 
@@ -64,6 +76,26 @@ export function GameTable({
     setChatOpen(false);
     setLastSeenChatCount(state.chat.length);
   };
+
+  // show a transient speech-bubble near a player's seat whenever they send a new chat message
+  const [bubbles, setBubbles] = useState<Record<string, { text: string; key: string }>>({});
+  const lastBubbledChatId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!state.chat.length) return;
+    const last = state.chat[state.chat.length - 1];
+    if (last.id === lastBubbledChatId.current) return;
+    lastBubbledChatId.current = last.id;
+    setBubbles((prev) => ({ ...prev, [last.playerId]: { text: last.text, key: last.id } }));
+    const timer = setTimeout(() => {
+      setBubbles((prev) => {
+        if (prev[last.playerId]?.key !== last.id) return prev;
+        const next = { ...prev };
+        delete next[last.playerId];
+        return next;
+      });
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [state.chat]);
 
   // play the shuffle sound + deal animation exactly when a round freshly starts (not on reconnect/initial load)
   const prevPhase = useRef(state.phase);
@@ -78,6 +110,8 @@ export function GameTable({
 
   const isMyTurn = state.turnPlayerId === myId;
   const isHost = state.hostId === myId;
+  const myPlayer = state.players.find((p) => p.id === myId);
+  const amEliminated = !!myPlayer?.eliminated && state.phase !== "sessionOver";
   // sort for display only — groups same-rank cards together so they're never scattered across the hand
   const hand = useMemo(() => {
     return [...state.you.hand].sort((a, b) => {
@@ -114,22 +148,25 @@ export function GameTable({
     !needsSuitDeclare &&
     !mustCoverSixNow &&
     (isSixActive || !state.hasDrawnThisTurn);
-  // skipping without drawing is only allowed on the very first move of the round (the 4-card starter's dealt card already counts as theirs)
+  // passing is allowed either on the very first move of the round (no draw needed at all), or any
+  // time after you've already taken your one allowed draw this turn — e.g. you'd rather hold onto a
+  // playable card than spend it now.
   const canPass =
     isMyTurn &&
     state.phase === "playing" &&
     !state.awaitingJackBonusFrom &&
     !needsSuitDeclare &&
-    state.canPassWithoutDraw &&
+    (state.canPassWithoutDraw || state.hasDrawnThisTurn) &&
     state.pendingEffect?.type !== "draw7" &&
     state.topCard?.rank !== "6";
 
   const selectionIsLegal = useMemo(() => {
     if (!selectedIds.length || !state.topCard) return false;
+    // a Jack is NOT a wild exception on the round-opening move for a plain dealt card
+    if (isFirstMoveOrdinaryCard) return selectedRank === state.topCard.rank;
     if (selectedRank === "J") return true;
     if (!state.activeSuit) return false;
     if (state.pendingEffect?.type === "draw7") return selectedRank === "7";
-    if (isFirstMoveOrdinaryCard) return selectedRank === state.topCard.rank;
     const selectedCards = hand.filter((c) => selectedIds.includes(c.id));
     return selectedCards.some((c) => isLegalCoverHint(c, state.topCard!.rank, state.activeSuit!));
   }, [selectedIds, selectedRank, hand, state.topCard, state.activeSuit, state.pendingEffect, isFirstMoveOrdinaryCard]);
@@ -194,9 +231,9 @@ export function GameTable({
         </button>
       </header>
 
-      <RoundTable players={state.players} myId={myId} turnPlayerId={state.turnPlayerId} hostId={state.hostId} dealTrigger={dealKey}>
+      <RoundTable players={state.players} myId={myId} turnPlayerId={state.turnPlayerId} hostId={state.hostId} dealTrigger={dealKey} bubbles={bubbles}>
         <TableStack
-          recentPile={state.recentPile}
+          topCard={state.topCard}
           activeSuit={state.activeSuit}
           stockCount={state.stockCount}
           pileCount={state.pileCount}
@@ -249,24 +286,43 @@ export function GameTable({
         </div>
       )}
 
-      <Hand cards={hand} selectedIds={selectedIds} onToggle={(c) => toggle(c, hand)} multiplier={state.roundMultiplier} />
+      {bubbles[myId] && (
+        <div className="my-bubble" key={bubbles[myId].key}>
+          {bubbles[myId].text}
+        </div>
+      )}
 
-      <div className="action-bar">
-        <button className="btn btn-primary" disabled={!isMyTurn || !selectionIsLegal} onClick={handlePlayClick}>
-          Зіграти {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
-        </button>
-        <button className="btn btn-secondary" disabled={!canDraw} onClick={onDrawCard}>
-          Взяти карту
-        </button>
-        <button className="btn btn-ghost" disabled={!canPass} onClick={onPassTurn}>
-          Пропустити
-        </button>
-        {selectedIds.length > 0 && (
-          <button className="btn btn-ghost" onClick={clear}>
-            Скасувати вибір
+      {amEliminated ? (
+        <div className="eliminated-banner">
+          <p>
+            Ви вилетіли з гри ({myPlayer?.score} очок). Можете спостерігати, або повернутись з рахунком лідера.
+          </p>
+          <button className="btn btn-primary" onClick={onRejoinSession}>
+            Зайти знову
           </button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          <Hand cards={hand} selectedIds={selectedIds} onToggle={(c) => toggle(c, hand)} multiplier={state.roundMultiplier} />
+
+          <div className="action-bar">
+            <button className="btn btn-primary" disabled={!isMyTurn || !selectionIsLegal} onClick={handlePlayClick}>
+              Зіграти {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
+            </button>
+            <button className="btn btn-secondary" disabled={!canDraw} onClick={onDrawCard}>
+              Взяти карту
+            </button>
+            <button className="btn btn-ghost" disabled={!canPass} onClick={onPassTurn}>
+              Пропустити
+            </button>
+            {selectedIds.length > 0 && (
+              <button className="btn btn-ghost" onClick={clear}>
+                Скасувати вибір
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       <SuitPicker open={pendingSuitPick} onPick={handleSuitPick} onCancel={() => setPendingSuitPick(false)} />
 
@@ -291,6 +347,9 @@ export function GameTable({
 
       <ChatFab unread={unreadChat} onClick={openChat} />
       <ChatPanel messages={state.chat} myId={myId} open={chatOpen} onClose={closeChat} onSend={onSendChat} />
+
+      <HistoryFab onClick={() => setHistoryOpen(true)} />
+      <HistoryPanel history={state.throwHistory} open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </div>
   );
 }

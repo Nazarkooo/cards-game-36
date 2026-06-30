@@ -1,4 +1,4 @@
-import { Card, PendingEffect, PublicGameState, PublicPlayer, Rank, RoundSummary, Suit, ActionLogEntry, ChatMessage } from "./shared.js";
+import { Card, PendingEffect, PublicGameState, PublicPlayer, Rank, RoundSummary, Suit, ActionLogEntry, ChatMessage, ThrowEvent } from "./shared.js";
 import { freshDeck, handValue, isLegalCover, pointValue, shuffle } from "./deck.js";
 
 export interface Player {
@@ -30,6 +30,7 @@ export interface RoomState {
   lastRoundSummary: RoundSummary | null;
   log: ActionLogEntry[];
   chat: ChatMessage[];
+  throwHistory: ThrowEvent[];
   dealtAceBonus: number; // one-time extra skip from an Ace dealt as the round's table starter card
   dealtEightBonus: number; // one-time forced draw on the next player from an 8 dealt as the table starter card
   dealtSevenBonus: number; // one-time draw7 obligation on the next player from a 7 dealt as the table starter card
@@ -40,6 +41,7 @@ export interface RoomState {
 }
 
 let logCounter = 0;
+let throwCounter = 0;
 function pushLog(state: RoomState, text: string) {
   logCounter += 1;
   state.log.push({ id: `l${logCounter}`, text, ts: Date.now() });
@@ -66,6 +68,7 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     lastRoundSummary: null,
     log: [],
     chat: [],
+    throwHistory: [],
     dealtAceBonus: 0,
     dealtEightBonus: 0,
     dealtSevenBonus: 0,
@@ -206,6 +209,25 @@ export function resetSession(state: RoomState): void {
   state.log = [];
 }
 
+// An eliminated player can rejoin mid-session instead of sitting out until everyone resets — they
+// come back at the same score as whoever currently leads (has the highest score) among the others.
+export function applyRejoinSession(state: RoomState, playerId: string): ActionResult {
+  const player = state.players.get(playerId);
+  if (!player) return { ok: false, error: "Гравця не знайдено" };
+  if (!player.eliminated) return { ok: false, error: "Ви не вилітали з гри" };
+  if (state.phase === "sessionOver") return { ok: false, error: "Сесія завершена — почніть нову гру" };
+
+  const others = [...state.players.values()].filter((p) => !p.eliminated && p.id !== playerId);
+  const leaderScore = others.length ? Math.max(...others.map((p) => p.score)) : 0;
+
+  player.eliminated = false;
+  player.score = leaderScore;
+  player.hand = [];
+  if (!state.order.includes(playerId)) state.order.push(playerId);
+  pushLog(state, `${player.name} повертається в гру з рахунком ${leaderScore} очок`);
+  return { ok: true };
+}
+
 export function startRound(state: RoomState): void {
   const eligible = [...state.players.values()].filter((p) => !p.eliminated);
   const deck = freshDeck();
@@ -238,6 +260,7 @@ export function startRound(state: RoomState): void {
   state.dealtSevenBonus = tableStarter && tableStarter.rank === "7" ? 2 : 0;
   state.firstMoveOfRound = true;
   state.lastCardPlayedBy = null;
+  state.throwHistory = [];
   state.pendingRoundEndWinnerId = null;
   state.hasDrawnThisTurn = false;
   state.pendingEffect = null;
@@ -299,16 +322,16 @@ export function applyPlayCards(
   }
 
   // On the round's very first move, a plain (non-special) dealt starter card can only be covered
-  // by another card of the exact same rank — suit-matching doesn't apply here like it would mid-game.
-  // 6/7/8/A already have their own dealt-card mechanics; J is handled separately below.
+  // by another card of the exact same rank — suit-matching does NOT apply, and a Jack is NOT a wild
+  // exception here either (unlike every other turn). 6/7/8/A already have their own dealt-card mechanics.
   const isFirstMoveOrdinaryCard = state.firstMoveOfRound && tr !== null && !["6", "7", "8", "A", "J"].includes(tr);
 
-  if (rank === "J") {
-    if (!declareSuit) return { ok: false, error: "Потрібно оголосити масть" };
-  } else if (isFirstMoveOrdinaryCard) {
+  if (isFirstMoveOrdinaryCard) {
     if (rank !== tr) {
       return { ok: false, error: "На початку роздачі можна докинути лише карту того ж рангу" };
     }
+  } else if (rank === "J") {
+    if (!declareSuit) return { ok: false, error: "Потрібно оголосити масть" };
   } else {
     const anyLegal = cards.some((c) => tr && suit && isLegalCover(c, tr, suit));
     if (!(tr && suit && (rank === tr || anyLegal))) {
@@ -329,6 +352,9 @@ export function applyPlayCards(
   state.pendingEffect = null;
 
   pushLog(state, `${player.name} кидає ${cards.length}x ${rank}${rank === "J" ? ` → масть ${declareSuit}` : ""}`);
+  throwCounter += 1;
+  state.throwHistory.push({ id: `t${throwCounter}`, playerId: player.id, playerName: player.name, cards: [...cards], ts: Date.now() });
+  if (state.throwHistory.length > 30) state.throwHistory.shift();
 
   const handEmptied = player.hand.length === 0;
 
@@ -406,7 +432,12 @@ export function applyDrawCard(state: RoomState, playerId: string): ActionResult 
     if (state.pendingRoundEndWinnerId) {
       const winnerId = state.pendingRoundEndWinnerId;
       state.pendingRoundEndWinnerId = null;
-      finishRoundByWinner(state, winnerId, []);
+      // the 7-chain can wrap back around to the original thrower (e.g. in a 2-player game) — if THEY
+      // are the one forced to draw here, their hand is no longer empty and the round must NOT end
+      const pendingWinner = state.players.get(winnerId);
+      if (pendingWinner && pendingWinner.hand.length === 0) {
+        finishRoundByWinner(state, winnerId, []);
+      }
     }
     return { ok: true };
   }
@@ -441,8 +472,11 @@ export function applyPassTurn(state: RoomState, playerId: string): ActionResult 
   if (state.phase !== "playing") return { ok: false, error: "Раунд не триває" };
   if (currentPlayerId(state) !== playerId) return { ok: false, error: "Не ваш хід" };
   if (state.awaitingJackBonusFrom) return { ok: false, error: "Очікується вибір бонусу валета" };
-  if (!state.firstMoveOfRound) {
-    return { ok: false, error: "Пропустити без добору можна лише на першому ході роздачі" };
+  // Passing is allowed either on the round's very first move (no draw needed at all), or any time
+  // after the player has already taken their one allowed draw this turn — e.g. they have a card
+  // they could play but would rather hold onto it, so they draw once and then choose to sit out.
+  if (!state.firstMoveOfRound && !state.hasDrawnThisTurn) {
+    return { ok: false, error: "Спочатку візьміть карту, потім зможете пропустити хід" };
   }
   if (state.activeSuit === null) return { ok: false, error: "Спочатку оголосіть масть або зіграйте Валета" };
   if (mustCoverSix(state)) return { ok: false, error: "Потрібно накрити 6" };
@@ -452,7 +486,7 @@ export function applyPassTurn(state: RoomState, playerId: string): ActionResult 
   if (!player) return { ok: false, error: "Гравця не знайдено" };
   state.firstMoveOfRound = false;
   advanceTurn(state, 1);
-  pushLog(state, `${player.name} пропускає хід (перший хід роздачі)`);
+  pushLog(state, `${player.name} пропускає хід`);
   return { ok: true };
 }
 
@@ -474,6 +508,9 @@ export function applyCallBridge(state: RoomState, playerId: string): ActionResul
   if (!bridgeAvailable(state)) return { ok: false, error: "Бридж недоступний" };
   if (state.lastCardPlayedBy !== playerId) {
     return { ok: false, error: "Бридж може оголосити лише той, хто доклав четверту карту" };
+  }
+  if (state.pendingEffect?.type === "draw7") {
+    return { ok: false, error: "Спочатку має вирішитись сімірка (взяти карти або перевести)" };
   }
   const player = state.players.get(playerId);
   if (!player) return { ok: false, error: "Гравця не знайдено" };
@@ -577,6 +614,7 @@ function finalizeRoundScoring(state: RoomState, summary: RoundSummary): void {
       pushLog(state, `${p.name}: рахунок 295 — обнулено до 0`);
     } else if (p.score > 300) {
       p.eliminated = true;
+      p.hand = [];
       summary.eliminated.push(playerId);
       removePlayerFromOrder(state, playerId);
       pushLog(state, `${p.name} вилітає з гри (${p.score} очок)`);
@@ -613,14 +651,14 @@ export function toPublicState(state: RoomState, forPlayerId: string): PublicGame
     hostId: state.hostId,
     you: { id: forPlayerId, hand: you ? you.hand : [] },
     topCard: top,
-    recentPile: state.pile.slice(-8),
+    throwHistory: state.throwHistory.slice(-20),
     activeSuit: state.activeSuit,
     stockCount: state.stock.length,
     pileCount: state.pile.length,
     turnPlayerId: currentPlayerId(state),
     pendingEffect: state.pendingEffect,
     roundMultiplier: state.roundMultiplier,
-    bridgeAvailable: bridgeAvailable(state) && state.lastCardPlayedBy === forPlayerId,
+    bridgeAvailable: bridgeAvailable(state) && state.lastCardPlayedBy === forPlayerId && state.pendingEffect?.type !== "draw7",
     awaitingJackBonusFrom: state.awaitingJackBonusFrom,
     jackBonusAmount: state.jackBonusAmount,
     log: state.log.slice(-20),
