@@ -613,6 +613,7 @@ export function toPublicState(state: RoomState, forPlayerId: string): PublicGame
     hostId: state.hostId,
     you: { id: forPlayerId, hand: you ? you.hand : [] },
     topCard: top,
+    recentPile: state.pile.slice(-8),
     activeSuit: state.activeSuit,
     stockCount: state.stock.length,
     pileCount: state.pile.length,

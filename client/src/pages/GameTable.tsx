@@ -1,9 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicGameState, Suit } from "../shared";
-import { isLegalCoverHint, SUIT_SYMBOLS, SUITS } from "../shared";
+import { isLegalCoverHint, RANKS, SUIT_SYMBOLS, SUITS } from "../shared";
 import { Hand, useCardSelection } from "../components/Hand";
 import { TableStack } from "../components/TableStack";
-import { PlayersRail } from "../components/PlayersRail";
 import { ScoreBoard } from "../components/ScoreBoard";
 import { SuitPicker } from "../components/SuitPicker";
 import { JackBonusModal } from "../components/JackBonusModal";
@@ -11,6 +10,8 @@ import { ActionLog } from "../components/ActionLog";
 import { GameOverModal } from "../components/GameOverModal";
 import { ChatPanel } from "../components/ChatPanel";
 import { ActiveSuitBadge } from "../components/ActiveSuitBadge";
+import { RoundTable } from "../components/RoundTable";
+import { playShuffleSound } from "../sound";
 
 interface Props {
   state: PublicGameState;
@@ -64,9 +65,27 @@ export function GameTable({
     setLastSeenChatCount(state.chat.length);
   };
 
+  // play the shuffle sound + deal animation exactly when a round freshly starts (not on reconnect/initial load)
+  const prevPhase = useRef(state.phase);
+  const [dealKey, setDealKey] = useState(0);
+  useEffect(() => {
+    if (prevPhase.current !== "playing" && state.phase === "playing") {
+      playShuffleSound();
+      setDealKey((k) => k + 1);
+    }
+    prevPhase.current = state.phase;
+  }, [state.phase]);
+
   const isMyTurn = state.turnPlayerId === myId;
   const isHost = state.hostId === myId;
-  const hand = state.you.hand;
+  // sort for display only — groups same-rank cards together so they're never scattered across the hand
+  const hand = useMemo(() => {
+    return [...state.you.hand].sort((a, b) => {
+      const rankDiff = RANKS.indexOf(a.rank) - RANKS.indexOf(b.rank);
+      if (rankDiff !== 0) return rankDiff;
+      return SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit);
+    });
+  }, [state.you.hand]);
 
   const selectedRank = selectedIds.length ? hand.find((c) => c.id === selectedIds[0])?.rank : null;
 
@@ -175,15 +194,15 @@ export function GameTable({
         </button>
       </header>
 
-      <PlayersRail players={state.players} myId={myId} turnPlayerId={state.turnPlayerId} hostId={state.hostId} />
-
-      <TableStack
-        topCard={state.topCard}
-        activeSuit={state.activeSuit}
-        stockCount={state.stockCount}
-        pileCount={state.pileCount}
-        multiplier={state.roundMultiplier}
-      />
+      <RoundTable players={state.players} myId={myId} turnPlayerId={state.turnPlayerId} hostId={state.hostId} dealTrigger={dealKey}>
+        <TableStack
+          recentPile={state.recentPile}
+          activeSuit={state.activeSuit}
+          stockCount={state.stockCount}
+          pileCount={state.pileCount}
+          multiplier={state.roundMultiplier}
+        />
+      </RoundTable>
 
       <ActionLog log={state.log} />
 

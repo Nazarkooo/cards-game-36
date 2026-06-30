@@ -266,54 +266,110 @@ button {
   margin-left: auto;
 }
 
-/* ---------- Players rail ---------- */
+/* ---------- Round table ---------- */
 
-.players-rail {
-  display: flex;
-  gap: 8px;
-  padding: 12px 14px;
-  overflow-x: auto;
+.round-table {
+  position: relative;
+  width: min(94vw, 480px);
+  aspect-ratio: 1 / 0.82;
+  margin: 10px auto 4px;
 }
 
-.player-chip {
+.round-table-felt {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 38%, rgba(139, 92, 246, 0.16), transparent 65%), rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.4), 0 14px 40px rgba(0, 0, 0, 0.4);
+}
+
+.round-table-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deal-fly-card {
+  position: absolute;
+  width: 30px;
+  height: 42px;
+  margin-left: -15px;
+  margin-top: -21px;
+  border-radius: 5px;
+  background: repeating-conic-gradient(from 45deg at 50% 50%, #2a1f47 0deg 90deg, #1c1430 90deg 180deg);
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 30;
+  transition:
+    left 0.45s cubic-bezier(0.3, 0, 0.2, 1) var(--stagger, 0ms),
+    top 0.45s cubic-bezier(0.3, 0, 0.2, 1) var(--stagger, 0ms),
+    opacity 0.3s ease calc(var(--stagger, 0ms) + 380ms);
+}
+
+.seat {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+}
+
+.seat-chip {
   background: var(--panel);
   backdrop-filter: blur(10px);
   border-radius: 14px;
-  padding: 9px 13px;
-  min-width: 112px;
+  padding: 7px 11px;
+  min-width: 92px;
+  max-width: 130px;
   border: 1px solid var(--panel-border);
-  flex-shrink: 0;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  text-align: center;
 }
 
-.player-chip-active {
+.seat-active .seat-chip {
   border-color: var(--accent-2);
   box-shadow: 0 0 18px rgba(34, 211, 238, 0.35);
 }
 
-.player-chip-eliminated {
+.seat-eliminated .seat-chip {
   opacity: 0.35;
 }
 
-.player-chip-name {
-  font-size: 13px;
+.seat-name {
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.player-chip-meta {
+.seat-meta {
   display: flex;
-  gap: 8px;
-  font-size: 12px;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
   color: var(--text-dim);
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .score-warn {
   color: var(--red);
   font-weight: 700;
+}
+
+@media (min-width: 760px) {
+  .round-table {
+    width: min(90%, 600px);
+  }
+  .seat-chip {
+    min-width: 110px;
+    padding: 9px 13px;
+  }
+  .seat-name {
+    font-size: 13px;
+  }
 }
 
 /* ---------- Table stack ---------- */
@@ -333,6 +389,26 @@ button {
   align-items: center;
   gap: 8px;
   position: relative;
+}
+
+.discard-fan {
+  position: relative;
+  width: 64px;
+  height: 92px;
+}
+
+.discard-fan-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: transform 0.25s ease;
+}
+
+@media (min-width: 760px) {
+  .discard-fan {
+    width: 76px;
+    height: 108px;
+  }
 }
 
 .stack-label {

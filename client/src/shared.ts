@@ -45,6 +45,7 @@ export interface PublicGameState {
     hand: Card[];
   };
   topCard: Card | null;
+  recentPile: Card[]; // last few cards on the discard pile, oldest first — for visualizing recent throws
   activeSuit: Suit | null;
   stockCount: number;
   pileCount: number;
