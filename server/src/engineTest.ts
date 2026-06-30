@@ -24,6 +24,9 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.dealtAceBonus = 0;
   room.dealtEightBonus = 0;
   room.dealtSevenBonus = 0;
+  // most tests using this helper are simulating a generic mid-round scenario, not the literal
+  // round-opening move, so the rank-only first-move restriction (Fix 4) shouldn't apply here
+  room.firstMoveOfRound = false;
 }
 
 // --- Test 1: basic deal + legal move + A skip ---
@@ -104,8 +107,9 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
     { id: "k3", rank: "K", suit: "D" },
     { id: "k4", rank: "K", suit: "C" }
   );
+  room.lastCardPlayedBy = room.order[0]; // simulate this player having placed the 4th king
   const pub = toPublicState(room, room.order[0]);
-  assert(pub.bridgeAvailable === true, "bridge available after 4 same-rank cards on pile");
+  assert(pub.bridgeAvailable === true, "bridge available after 4 same-rank cards on pile, for whoever placed the last one");
   const caller = room.order[0];
   const scoresBefore = new Map([...room.players.values()].map((p) => [p.id, p.score]));
   const res = applyCallBridge(room, caller);
@@ -160,6 +164,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   pA.hand = [{ id: "x1", rank: "K", suit: "S" }];
   pB.hand = [{ id: "x2", rank: "K", suit: "H" }];
   room.pile.push({ id: "z1", rank: "9", suit: "S" }, { id: "z2", rank: "9", suit: "H" }, { id: "z3", rank: "9", suit: "D" }, { id: "z4", rank: "9", suit: "C" });
+  room.lastCardPlayedBy = "e1";
   applyCallBridge(room, "e1");
   assert(pA.eliminated === true, `e1 (296+10*mult>300) should be eliminated, got score=${pA.score}`);
   assert(pB.score === 0, `e2 (285+10*mult=295) should reset to 0, got score=${pB.score}`);
@@ -287,6 +292,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   room.roundStarterId = "fm1";
   startRound(room);
   forceNeutralTop(room);
+  room.firstMoveOfRound = true; // this test specifically exercises the still-pending opening move
   assert(room.firstMoveOfRound === true, "firstMoveOfRound is true right after dealing");
 
   const starterId = room.order[room.turnIndex];
@@ -294,7 +300,7 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   const passRes = applyPassTurn(room, starterId);
   assert(passRes.ok, "starter can pass on their very first move without holding a matching card");
   assert(room.stock.length === stockBefore, "passing on the first move does not draw any card");
-  assert(room.firstMoveOfRound === false, "firstMoveOfRound is consumed after the first move");
+  assert((room.firstMoveOfRound as boolean) === false, "firstMoveOfRound is consumed after the first move");
 
   // now it's the second player's turn — a normal mid-round turn must NOT allow a free pass
   const secondId = room.order[room.turnIndex];
@@ -616,6 +622,153 @@ function forceNeutralTop(room: ReturnType<typeof createRoom>, suit: Card["suit"]
   startRound(room);
   assert((room.phase as string) === "playing", "a new round starts normally after resetting the session");
   assert(room.order.length === 2, "both players are active again in the new session's turn order");
+}
+
+// --- Test 26 (Fix 1): throwing your LAST card as a 6 does not end the round — must keep covering ---
+{
+  const room = createRoom("rf1a", "f1a", "Thrower");
+  addPlayer(room, "f1b", "Other");
+  room.roundStarterId = "f1a";
+  startRound(room);
+  forceNeutralTop(room);
+  const top = room.pile[room.pile.length - 1];
+  const thrower = room.players.get("f1a")!;
+  thrower.hand = [{ id: "lastsix", rank: "6", suit: top.suit }];
+
+  const res = applyPlayCards(room, "f1a", ["lastsix"]);
+  assert(res.ok, "thrower plays their very last card as a 6");
+  assert((room.phase as string) === "playing", "round does NOT end — phase stays playing");
+  assert(room.order[room.turnIndex] === "f1a", "turn stays with the thrower, who must now cover their own 6");
+  assert(thrower.hand.length === 0, "thrower's hand is genuinely empty at this point");
+
+  // force a known draw so they reliably draw a covering card next
+  room.stock.push({ id: "cover-card", rank: "9", suit: top.suit });
+  const drawRes = applyDrawCard(room, "f1a");
+  assert(drawRes.ok, "thrower can draw while covering their own empty-handed 6");
+  assert((room.phase as string) === "playing", "still not over after drawing");
+
+  const coverCard = thrower.hand[0];
+  const finishRes = applyPlayCards(room, "f1a", [coverCard.id]);
+  assert(finishRes.ok, "thrower finally covers the 6 with the drawn card and empties their hand again");
+  assert(
+    (room.phase as string) === "roundOver" || (room.phase as string) === "sessionOver",
+    "round ends now that the 6 was actually covered with a non-six card"
+  );
+}
+
+// --- Test 27 (Fix 2): Bridge is only available to whoever placed the 4th matching card, and never on 6s ---
+{
+  const room = createRoom("rf2a", "f2a", "A");
+  addPlayer(room, "f2b", "B");
+  startRound(room);
+  forceNeutralTop(room);
+  room.pile.push(
+    { id: "qa", rank: "Q", suit: "S" },
+    { id: "qb", rank: "Q", suit: "H" },
+    { id: "qc", rank: "Q", suit: "D" }
+  );
+  const fourth: Card = { id: "qd", rank: "Q", suit: "C" };
+  const playerA = room.players.get("f2a")!;
+  playerA.hand.push(fourth);
+  room.turnIndex = room.order.indexOf("f2a");
+  room.activeSuit = "D"; // matches the suit of the 3rd queen already on the pile
+
+  const res = applyPlayCards(room, "f2a", [fourth.id]);
+  assert(res.ok, "player A plays the 4th queen");
+
+  const stateForA = toPublicState(room, "f2a");
+  const stateForB = toPublicState(room, "f2b");
+  assert(stateForA.bridgeAvailable === true, "Bridge is shown to the player who placed the 4th card (A)");
+  assert(stateForB.bridgeAvailable === false, "Bridge is NOT shown to the other player (B)");
+
+  const wrongCaller = applyCallBridge(room, "f2b");
+  assert(wrongCaller.ok === false, "the other player cannot call Bridge even though 4-of-a-kind is on the table");
+  const rightCaller = applyCallBridge(room, "f2a");
+  assert(rightCaller.ok, "the player who placed the 4th card can call Bridge");
+}
+
+// --- Test 28 (Fix 2): four sixes in a row never make Bridge available to anyone ---
+{
+  const room = createRoom("rf2c", "f2c", "A");
+  addPlayer(room, "f2d", "B");
+  startRound(room);
+  forceNeutralTop(room);
+  room.pile.push(
+    { id: "s6a", rank: "6", suit: "S" },
+    { id: "s6b", rank: "6", suit: "H" },
+    { id: "s6c", rank: "6", suit: "D" },
+    { id: "s6d", rank: "6", suit: "C" }
+  );
+  room.lastCardPlayedBy = "f2c";
+  const stateForC = toPublicState(room, "f2c");
+  assert(stateForC.bridgeAvailable === false, "four sixes never offer Bridge, even to whoever placed the last one");
+  const res = applyCallBridge(room, "f2c");
+  assert(res.ok === false, "calling Bridge on four sixes is rejected server-side too");
+}
+
+// --- Test 29 (Fix 3): the round does not appear "over" while a jack-ending bonus choice is pending ---
+{
+  const room = createRoom("rf3a", "f3a", "Winner");
+  addPlayer(room, "f3b", "Other");
+  startRound(room);
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
+  const winnerId = room.order[room.turnIndex];
+  const winner = room.players.get(winnerId)!;
+  winner.hand = [{ id: "lastjack", rank: "J", suit: "H" }];
+
+  const res = applyPlayCards(room, winnerId, ["lastjack"], "S");
+  assert(res.ok, "winner plays their last card as a single jack");
+  assert((room.phase as string) === "playing", "phase stays playing while the jack bonus choice is pending — round is NOT shown as over yet");
+  assert(room.awaitingJackBonusFrom === winnerId, "awaiting the winner's bonus choice");
+
+  applyChooseJackBonus(room, winnerId, "all");
+  assert(
+    (room.phase as string) === "roundOver" || (room.phase as string) === "sessionOver",
+    "phase only becomes roundOver/sessionOver once the bonus choice is actually made"
+  );
+}
+
+// --- Test 30 (Fix 4): the round-opening move on a plain dealt card only allows matching by exact rank ---
+{
+  const room = createRoom("rf4a", "f4a", "Starter");
+  addPlayer(room, "f4b", "Second");
+  room.roundStarterId = "f4a";
+  startRound(room);
+  room.pile = [{ id: "dealt-queen", rank: "Q", suit: "S" }];
+  room.activeSuit = "S";
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
+
+  const starter = room.players.get("f4a")!;
+  const suitMatchWrongRank: Card = { id: "suitmatch", rank: "9", suit: "S" }; // matches suit, wrong rank
+  starter.hand.push(suitMatchWrongRank);
+  const rejected = applyPlayCards(room, "f4a", [suitMatchWrongRank.id]);
+  assert(rejected.ok === false, "matching suit alone is not enough on the round-opening move for a plain dealt card");
+
+  const rankMatch: Card = { id: "rankmatch", rank: "Q", suit: "C" }; // different suit, same rank
+  starter.hand.push(rankMatch);
+  const accepted = applyPlayCards(room, "f4a", [rankMatch.id]);
+  assert(accepted.ok, "matching rank (regardless of suit) is accepted on the round-opening move");
+}
+
+// --- Test 31 (Fix 4): with no matching-rank card, the starter just passes without drawing, as before ---
+{
+  const room = createRoom("rf4b", "f4c", "Starter");
+  addPlayer(room, "f4d", "Second");
+  room.roundStarterId = "f4c";
+  startRound(room);
+  room.pile = [{ id: "dealt-king", rank: "K", suit: "H" }];
+  room.activeSuit = "H";
+  room.dealtAceBonus = 0;
+  room.dealtEightBonus = 0;
+  room.dealtSevenBonus = 0;
+  room.players.get("f4c")!.hand = [{ id: "unrelated-k", rank: "9", suit: "H" }]; // matches suit only, no King
+
+  const res = applyPassTurn(room, "f4c");
+  assert(res.ok, "starter with no matching-rank card can still just pass without drawing");
 }
 
 console.log("\nDone.");

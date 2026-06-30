@@ -73,10 +73,16 @@ export function GameTable({
   // the table started with a dealt Jack — its suit hasn't been declared yet
   const needsSuitDeclare = isMyTurn && state.phase === "playing" && state.activeSuit === null;
 
+  // On the round's very first move, a plain (non-special) dealt starter card can only be matched
+  // by the exact same rank — suit-matching doesn't count, unlike every other turn.
+  const isFirstMoveOrdinaryCard =
+    state.canPassWithoutDraw && !!state.topCard && !["6", "7", "8", "A", "J"].includes(state.topCard.rank);
+
   const hasAnyLegal = useMemo(() => {
     if (!state.topCard || !state.activeSuit) return false;
+    if (isFirstMoveOrdinaryCard) return hand.some((c) => c.rank === state.topCard!.rank);
     return hand.some((c) => isLegalCoverHint(c, state.topCard!.rank, state.activeSuit!));
-  }, [hand, state.topCard, state.activeSuit]);
+  }, [hand, state.topCard, state.activeSuit, isFirstMoveOrdinaryCard]);
 
   // drawing is a free choice, capped at one card per normal turn. The one exception is a 6, which
   // must be mandatorily covered (or drawn-until-covered, with no cap) by whoever holds the cover for it
@@ -104,9 +110,10 @@ export function GameTable({
     if (selectedRank === "J") return true;
     if (!state.activeSuit) return false;
     if (state.pendingEffect?.type === "draw7") return selectedRank === "7";
+    if (isFirstMoveOrdinaryCard) return selectedRank === state.topCard.rank;
     const selectedCards = hand.filter((c) => selectedIds.includes(c.id));
     return selectedCards.some((c) => isLegalCoverHint(c, state.topCard!.rank, state.activeSuit!));
-  }, [selectedIds, selectedRank, hand, state.topCard, state.activeSuit, state.pendingEffect]);
+  }, [selectedIds, selectedRank, hand, state.topCard, state.activeSuit, state.pendingEffect, isFirstMoveOrdinaryCard]);
 
   const handlePlayClick = () => {
     if (!selectedIds.length) return;

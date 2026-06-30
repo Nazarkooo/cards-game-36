@@ -36,6 +36,7 @@ export interface RoomState {
   firstMoveOfRound: boolean; // the 4-card starter's dealt 5th card already counts as their card — they may skip without drawing, once
   pendingRoundEndWinnerId: string | null; // set when a player empties their hand on a 7 — round ends once the draw7 chain is actually resolved
   hasDrawnThisTurn: boolean; // caps a normal (non-six) voluntary/forced draw to exactly one card per turn
+  lastCardPlayedBy: string | null; // who placed the most recent card — only they may call Bridge
 }
 
 let logCounter = 0;
@@ -71,6 +72,7 @@ export function createRoom(roomId: string, hostId: string, hostName: string): Ro
     firstMoveOfRound: false,
     pendingRoundEndWinnerId: null,
     hasDrawnThisTurn: false,
+    lastCardPlayedBy: null,
   };
   addPlayer(state, hostId, hostName);
   pushLog(state, `${hostName} створив(ла) кімнату`);
@@ -119,6 +121,7 @@ function bridgeAvailable(state: RoomState): boolean {
   if (state.pile.length < 4) return false;
   const last4 = state.pile.slice(-4);
   const rank = last4[0].rank;
+  if (rank === "6") return false; // Bridge can never be called on four sixes
   return last4.every((c) => c.rank === rank);
 }
 
@@ -234,6 +237,7 @@ export function startRound(state: RoomState): void {
   // a dealt 7 already carries its draw7-or-redirect obligation, same as if it had just been played
   state.dealtSevenBonus = tableStarter && tableStarter.rank === "7" ? 2 : 0;
   state.firstMoveOfRound = true;
+  state.lastCardPlayedBy = null;
   state.pendingRoundEndWinnerId = null;
   state.hasDrawnThisTurn = false;
   state.pendingEffect = null;
@@ -294,8 +298,17 @@ export function applyPlayCards(
     return { ok: false, error: "Потрібно зіграти 7 (перевести) або взяти карти" };
   }
 
+  // On the round's very first move, a plain (non-special) dealt starter card can only be covered
+  // by another card of the exact same rank — suit-matching doesn't apply here like it would mid-game.
+  // 6/7/8/A already have their own dealt-card mechanics; J is handled separately below.
+  const isFirstMoveOrdinaryCard = state.firstMoveOfRound && tr !== null && !["6", "7", "8", "A", "J"].includes(tr);
+
   if (rank === "J") {
     if (!declareSuit) return { ok: false, error: "Потрібно оголосити масть" };
+  } else if (isFirstMoveOrdinaryCard) {
+    if (rank !== tr) {
+      return { ok: false, error: "На початку роздачі можна докинути лише карту того ж рангу" };
+    }
   } else {
     const anyLegal = cards.some((c) => tr && suit && isLegalCover(c, tr, suit));
     if (!(tr && suit && (rank === tr || anyLegal))) {
@@ -309,6 +322,7 @@ export function applyPlayCards(
   // Remove cards from hand, place on pile (in submitted order)
   player.hand = player.hand.filter((h) => !cardIds.includes(h.id));
   for (const c of cards) state.pile.push(c);
+  state.lastCardPlayedBy = player.id;
 
   const lastCard = cards[cards.length - 1];
   state.activeSuit = rank === "J" ? declareSuit! : lastCard.suit;
@@ -344,7 +358,7 @@ export function applyPlayCards(
     advanceTurn(state, 1);
   }
 
-  if (handEmptied) {
+  if (handEmptied && rank !== "6") {
     if (rank === "7") {
       // round-end is deferred until someone actually draws the accumulated cards instead of redirecting
       if (!state.pendingRoundEndWinnerId) state.pendingRoundEndWinnerId = player.id;
@@ -352,6 +366,8 @@ export function applyPlayCards(
       finishRoundByWinner(state, player.id, cards);
     }
   }
+  // a 6 never ends the round even with an empty hand — the thrower must keep drawing until they
+  // can cover it themselves (mustCoverSix already handles this correctly for an empty hand)
 
   return { ok: true };
 }
@@ -456,6 +472,9 @@ export function applySendChat(state: RoomState, playerId: string, text: string):
 export function applyCallBridge(state: RoomState, playerId: string): ActionResult {
   if (state.phase !== "playing") return { ok: false, error: "Раунд не триває" };
   if (!bridgeAvailable(state)) return { ok: false, error: "Бридж недоступний" };
+  if (state.lastCardPlayedBy !== playerId) {
+    return { ok: false, error: "Бридж може оголосити лише той, хто доклав четверту карту" };
+  }
   const player = state.players.get(playerId);
   if (!player) return { ok: false, error: "Гравця не знайдено" };
   pushLog(state, `${player.name} оголошує БРИДЖ!`);
@@ -490,7 +509,10 @@ export function applyChooseJackBonus(state: RoomState, playerId: string, mode: "
 // --- Round finishing ---
 
 function finishRoundByWinner(state: RoomState, winnerId: string, winningCards: Card[]): void {
-  state.phase = "roundOver";
+  // phase is set by finalizeRoundScoring() once scoring is actually finalized — NOT here, since a
+  // jack-ending defers finalization until the winner picks their bonus, and setting "roundOver"
+  // early would make the client show the round-over screen (with a premature "next round" option)
+  // before that choice has even been made.
   state.pendingRoundEndWinnerId = null;
   const multiplier = state.roundMultiplier;
   const pointsAdded: Record<string, number> = {};
@@ -597,7 +619,7 @@ export function toPublicState(state: RoomState, forPlayerId: string): PublicGame
     turnPlayerId: currentPlayerId(state),
     pendingEffect: state.pendingEffect,
     roundMultiplier: state.roundMultiplier,
-    bridgeAvailable: bridgeAvailable(state),
+    bridgeAvailable: bridgeAvailable(state) && state.lastCardPlayedBy === forPlayerId,
     awaitingJackBonusFrom: state.awaitingJackBonusFrom,
     jackBonusAmount: state.jackBonusAmount,
     log: state.log.slice(-20),
